@@ -98,31 +98,28 @@ auto BlockAllocator::allocate() -> ChfsResult<block_id_t> {
     bm->read_block(i + this->bitmap_block_id, buffer.data());
 
     // The index of the allocated bit inside current bitmap block.
-    std::optional<block_id_t> res = std::nullopt;
+    std::optional<usize> res = std::nullopt;
+
+    Bitmap map_util(buffer.data(), this->bm->block_size());
 
     if (i == this->bitmap_block_cnt - 1) {
       // If current block is the last block of the bitmap.
-
-      // TODO: Find the first free bit of current bitmap block
-      // and store it in `res`.
-      UNIMPLEMENTED();
+      res = map_util.find_first_free_w_bound(this->last_block_num);
     } else {
-
-      // TODO: Find the first free bit of current bitmap block
-      // and store it in `res`.
-      UNIMPLEMENTED();
+      res = map_util.find_first_free();
     }
 
     // If we find one free bit inside current bitmap block.
     if (res) {
-      // The block id of the allocated block.
-      block_id_t retval = static_cast<block_id_t>(0);
 
-      // TODO:
       // 1. Set the free bit we found to 1 in the bitmap.
+      map_util.set(res.value());
       // 2. Flush the changed bitmap block back to the block manager.
+      this->bm->write_block(i + this->bitmap_block_id, buffer.data());
       // 3. Calculate the value of `retval`.
-      UNIMPLEMENTED();
+      // The block id of the allocated block.
+      block_id_t retval = static_cast<block_id_t>(
+          res.value() + i * this->bm->block_size() * KBitsPerByte);
 
       return ChfsResult<block_id_t>(retval);
     }
@@ -135,13 +132,26 @@ auto BlockAllocator::deallocate(block_id_t block_id) -> ChfsNullResult {
   if (block_id >= this->bm->total_blocks()) {
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
+  const auto total_bits_per_block = this->bm->block_size() * KBitsPerByte;
+  auto idx = block_id / total_bits_per_block + this->bitmap_block_id;
+  auto bitmap_block_offset = block_id % total_bits_per_block;
 
-  // TODO: Implement this function.
+  std::vector<u8> buffer(this->bm->block_size());
+  this->bm->read_block(idx, buffer.data());
+
   // 1. According to `block_id`, zero the bit in the bitmap.
+  Bitmap map_util{buffer.data(), this->bm->block_size()};
+
+  if (!map_util.check(bitmap_block_offset)) {
+    return ChfsNullResult{ErrorType::INVALID_ARG};
+  }
+  map_util.clear(bitmap_block_offset);
+
   // 2. Flush the changed bitmap block back to the block manager.
-  // 3. Return ChfsNullResult(ErrorType::INVALID_ARG) 
+  this->bm->write_block(idx, buffer.data());
+
+  // 3. Return ChfsNullResult(ErrorType::INVALID_ARG)
   //    if you find `block_id` is invalid (e.g. already freed).
-  UNIMPLEMENTED();
 
   return KNullOk;
 }
