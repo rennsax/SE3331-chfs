@@ -102,7 +102,6 @@ auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
         return res.unwrap_error();
       }
       // 2. Setup the inode table.
-      this->set_table(free_idx.value(), bid);
       if (auto res = this->set_table(free_idx.value(), bid); res.is_err()) {
         return res.unwrap_error();
       }
@@ -120,11 +119,8 @@ auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
 auto InodeManager::set_table(inode_id_t idx, block_id_t bid) -> ChfsNullResult {
   auto inode_table_idx = idx;
   if (inode_table_idx >= this->max_inode_supported ||
-      bid >= this->bm->total_blocks()
-      // FIXME: less than super + inode_table + inode_bitmap + block_bitmap ?
-      // || bid < 1 + n_table_blocks + n_bitmap_blocks +
-      //                    this->bm->total_blocks()
-  ) {
+      // bid >= 0 is always valid, see FileOperation::FileOperation
+      bid >= this->bm->total_blocks()) {
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
 
@@ -133,7 +129,7 @@ auto InodeManager::set_table(inode_id_t idx, block_id_t bid) -> ChfsNullResult {
     return ChfsNullResult(iter_res.unwrap_error());
   }
   auto inode_table_iter = iter_res.unwrap();
-  inode_table_iter.next(inode_table_idx);
+  inode_table_iter.next(inode_table_idx * sizeof(block_id_t));
   auto *block_id_ptr = inode_table_iter.unsafe_get_value_ptr<block_id_t>();
   *block_id_ptr = bid;
   // Remember to flush the data
@@ -160,7 +156,7 @@ auto InodeManager::get(inode_id_t id) -> ChfsResult<block_id_t> {
   }
 
   auto inode_table_iter = iter_res.unwrap();
-  inode_table_iter.next(inode_table_idx);
+  inode_table_iter.next(inode_table_idx * sizeof(block_id_t));
 
   res_block_id = *inode_table_iter.unsafe_get_value_ptr<block_id_t>();
 
