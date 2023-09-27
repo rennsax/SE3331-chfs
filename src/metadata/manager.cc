@@ -94,13 +94,22 @@ auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
         return ChfsResult<inode_id_t>(res.unwrap_error());
       }
 
-      // TODO:
       // 1. Initialize the inode with the given type.
+      std::vector<u8> buffer(this->bm->block_size());
+      Inode inode{type, this->bm->block_size()};
+      inode.flush_to_buffer(buffer.data());
+      if (auto res = this->bm->write_block(bid, buffer.data()); res.is_err()) {
+        return res.unwrap_error();
+      }
       // 2. Setup the inode table.
+      this->set_table(free_idx.value(), bid);
+      if (auto res = this->set_table(free_idx.value(), bid); res.is_err()) {
+        return res.unwrap_error();
+      }
       // 3. Return the id of the allocated inode.
       //    You may have to use the `RAW_2_LOGIC` macro
       //    to get the result inode id.
-      UNIMPLEMENTED();
+      return ChfsResult<inode_id_t>(RAW_2_LOGIC(free_idx.value()));
     }
   }
 
@@ -109,11 +118,29 @@ auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
 
 // { Your code here }
 auto InodeManager::set_table(inode_id_t idx, block_id_t bid) -> ChfsNullResult {
+  auto inode_table_idx = idx;
+  if (inode_table_idx >= this->max_inode_supported ||
+      bid >= this->bm->total_blocks()
+      // FIXME: less than super + inode_table + inode_bitmap + block_bitmap ?
+      // || bid < 1 + n_table_blocks + n_bitmap_blocks +
+      //                    this->bm->total_blocks()
+  ) {
+    return ChfsNullResult(ErrorType::INVALID_ARG);
+  }
 
-  // TODO: Implement this function.
-  // Fill `bid` into the inode table entry
-  // whose index is `idx`.
-  UNIMPLEMENTED();
+  auto iter_res = BlockIterator::create(this->bm.get(), 1, 1 + n_table_blocks);
+  if (iter_res.is_err()) {
+    return ChfsNullResult(iter_res.unwrap_error());
+  }
+  auto inode_table_iter = iter_res.unwrap();
+  inode_table_iter.next(inode_table_idx);
+  auto *block_id_ptr = inode_table_iter.unsafe_get_value_ptr<block_id_t>();
+  *block_id_ptr = bid;
+  // Remember to flush the data
+  auto res = inode_table_iter.flush_cur_block();
+  if (res.is_err()) {
+    return ChfsNullResult(res.unwrap_error());
+  }
 
   return KNullOk;
 }
@@ -122,12 +149,20 @@ auto InodeManager::set_table(inode_id_t idx, block_id_t bid) -> ChfsNullResult {
 auto InodeManager::get(inode_id_t id) -> ChfsResult<block_id_t> {
   block_id_t res_block_id = 0;
 
-  // TODO: Implement this function.
-  // Get the block id of inode whose id is `id`
-  // from the inode table. You may have to use
-  // the macro `LOGIC_2_RAW` to get the inode
-  // table index.
-  UNIMPLEMENTED();
+  auto inode_table_idx = LOGIC_2_RAW(id);
+  if (inode_table_idx >= this->max_inode_supported) {
+    return ChfsResult<block_id_t>(ErrorType::INVALID_ARG);
+  }
+
+  auto iter_res = BlockIterator::create(this->bm.get(), 1, 1 + n_table_blocks);
+  if (iter_res.is_err()) {
+    return ChfsResult<block_id_t>(iter_res.unwrap_error());
+  }
+
+  auto inode_table_iter = iter_res.unwrap();
+  inode_table_iter.next(inode_table_idx);
+
+  res_block_id = *inode_table_iter.unsafe_get_value_ptr<block_id_t>();
 
   return ChfsResult<block_id_t>(res_block_id);
 }
@@ -214,17 +249,31 @@ auto InodeManager::read_inode(inode_id_t id, std::vector<u8> &buffer)
 auto InodeManager::free_inode(inode_id_t id) -> ChfsNullResult {
 
   // simple pre-checks
-  if (id >= max_inode_supported - 1) {
+  auto inode_idx = LOGIC_2_RAW(id);
+  if (inode_idx >= max_inode_supported) {
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
 
-  // TODO:
   // 1. Clear the inode table entry.
   //    You may have to use macro `LOGIC_2_RAW`
   //    to get the index of inode table from `id`.
-  // 2. Clear the inode bitmap.
-  UNIMPLEMENTED();
+  if (auto res = this->set_table(inode_idx, 0); res.is_err()) {
+    return res.unwrap_error();
+  }
 
+  // 2. Clear the inode bitmap.
+  auto iter_res = BlockIterator::create(this->bm.get(), 1 + n_table_blocks,
+                                        1 + n_table_blocks + n_bitmap_blocks);
+  if (iter_res.is_err()) {
+    return iter_res.unwrap_error();
+  }
+  auto bitmap_iter = iter_res.unwrap();
+  if (auto res = bitmap_iter.next(inode_idx / KBitsPerByte); res.is_err()) {
+    return res.unwrap_error();
+  }
+  Bitmap{bitmap_iter.unsafe_get_value_ptr<u8>(), 1}.clear(inode_idx %
+                                                          KBitsPerByte);
+  bitmap_iter.flush_cur_block();
   return KNullOk;
 }
 
