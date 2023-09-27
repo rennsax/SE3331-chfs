@@ -132,27 +132,27 @@ auto BlockAllocator::deallocate(block_id_t block_id) -> ChfsNullResult {
   if (block_id >= this->bm->total_blocks()) {
     return ChfsNullResult(ErrorType::INVALID_ARG);
   }
-  const auto total_bits_per_block = this->bm->block_size() * KBitsPerByte;
-  auto idx = block_id / total_bits_per_block + this->bitmap_block_id;
-  auto bitmap_block_offset = block_id % total_bits_per_block;
-
-  std::vector<u8> buffer(this->bm->block_size());
-  this->bm->read_block(idx, buffer.data());
 
   // 1. According to `block_id`, zero the bit in the bitmap.
-  Bitmap map_util{buffer.data(), this->bm->block_size()};
-
-  if (!map_util.check(bitmap_block_offset)) {
-    return ChfsNullResult{ErrorType::INVALID_ARG};
+  const auto iter_res =
+      BlockIterator::create(this->bm.get(), this->bitmap_block_id,
+                            this->bitmap_block_id + this->bitmap_block_cnt);
+  if (iter_res.is_err()) {
+    return iter_res.unwrap_error();
   }
-  map_util.clear(bitmap_block_offset);
-
-  // 2. Flush the changed bitmap block back to the block manager.
-  this->bm->write_block(idx, buffer.data());
-
+  auto iter = iter_res.unwrap();
+  if (auto res = iter.next(block_id / KBitsPerByte); res.is_err()) {
+    return res.unwrap_error();
+  }
+  Bitmap map_util{iter.unsafe_get_value_ptr<u8>(), 1};
   // 3. Return ChfsNullResult(ErrorType::INVALID_ARG)
   //    if you find `block_id` is invalid (e.g. already freed).
-
+  if (!map_util.check(block_id % KBitsPerByte)) {
+    return ChfsNullResult{ErrorType::INVALID_ARG};
+  }
+  map_util.clear(block_id % KBitsPerByte);
+  // 2. Flush the changed bitmap block back to the block manager.
+  iter.flush_cur_block();
   return KNullOk;
 }
 
