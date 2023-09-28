@@ -104,8 +104,7 @@ auto rm_from_directory(std::string src, std::string filename) -> std::string {
   auto entries = chfs_util::string::split(src, '/');
   auto removed_end = std::remove_if(
       entries.begin(), entries.end(), [&](std::string_view sv) -> bool {
-        return chfs_util::string::split(sv)[0].find(filename) !=
-               std::string_view::npos;
+        return chfs_util::string::split(sv)[0] == filename;
       });
   return chfs_util::string::join(entries.begin(), removed_end, '/');
 }
@@ -171,7 +170,7 @@ auto FileOperation::lookup(inode_id_t id, const char *name)
       list.begin(), list.end(),
       [=](const DirectoryEntry &entry) -> bool { return entry.name == name; });
   if (found_it == list.end()) {
-    return ChfsResult<inode_id_t>(ErrorType::NotExist);
+    return ErrorType::NotExist;
   }
   return found_it->id;
 }
@@ -201,19 +200,17 @@ auto FileOperation::mk_helper(inode_id_t /* parent id */ id, const char *name,
   if (auto res = write_raw_content(this, id, dir_content_new); res.is_err()) {
     return res.unwrap_error();
   }
-
-  return ChfsResult<inode_id_t>(static_cast<inode_id_t>(0));
+  return inode_id;
 }
 
 // {Your code here}
 auto FileOperation::unlink(inode_id_t parent, const char *name)
     -> ChfsNullResult {
 
-  // TODO:
   // 1. Remove the file, you can use the function `remove_file`
   const auto lookup_res = this->lookup(parent, name);
-  if (lookup_res.is_ok()) {
-    return ErrorType::AlreadyExist;
+  if (lookup_res.is_err()) {
+    return ErrorType::NotExist;
   }
   const auto inode_id = lookup_res.unwrap();
   if (auto res = this->remove_file(inode_id); res.is_err()) {
