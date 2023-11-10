@@ -5,6 +5,7 @@ CMD bash
 # Install Ubuntu packages.
 # Please add packages in alphabetical order.
 ARG DEBIAN_FRONTEND=noninteractive
+RUN sed -i 's/ports.ubuntu.com/mirror.sjtu.edu.cn/g' /etc/apt/sources.list
 RUN apt-get -y update && \
     apt-get -y install \
       build-essential \
@@ -32,3 +33,5 @@ RUN cat /tmp/mypasswd | chpasswd
 USER stu
 
 WORKDIR /home/stu/
+
+CMD ["/bin/bash"]
