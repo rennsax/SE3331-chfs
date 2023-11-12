@@ -119,6 +119,9 @@ public:
 private:
   std::unique_ptr<RpcServer> server_;
   std::shared_ptr<BlockAllocator> block_allocator_;
+
+  version_t read_version(block_id_t block_id) const;
+  version_t increase_version(block_id_t block_id);
 };
 
 } // namespace chfs
