@@ -15,12 +15,11 @@ auto DataServer::initialize(std::string const &data_path) {
   auto bm = std::shared_ptr<BlockManager>(
       new BlockManager(data_path, KDefaultBlockCnt));
   if (is_initialized) {
-    block_allocator_ =
-        std::make_shared<BlockAllocator>(bm, false);
+    block_allocator_ = std::make_shared<BlockAllocator>(bm, false);
   } else {
     // We need to reserve some blocks for storing the version of each block
-    block_allocator_ = std::shared_ptr<BlockAllocator>(
-        new BlockAllocator(bm, true));
+    block_allocator_ =
+        std::shared_ptr<BlockAllocator>(new BlockAllocator(bm, true));
   }
 
   // Initialize the RPC server and bind all handlers
@@ -52,7 +51,9 @@ DataServer::DataServer(std::string const &address, u16 port,
   initialize(data_path);
 }
 
-DataServer::~DataServer() { server_.reset(); }
+DataServer::~DataServer() {
+  server_.reset();
+}
 
 // {Your code here}
 auto DataServer::read_data(block_id_t block_id, usize offset, usize len,
