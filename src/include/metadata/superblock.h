@@ -74,13 +74,22 @@ public:
   /**
    * Getters
    */
-  u64 get_file_system_size() const { return inner.file_system_size; }
-  u32 get_block_size() const { return inner.block_size; }
-  u64 get_nblocks() const { return inner.nblocks; }
-  u64 get_ninodes() const { return inner.ninodes; }
+  u64 get_file_system_size() const {
+    return inner.file_system_size;
+  }
+  u32 get_block_size() const {
+    return inner.block_size;
+  }
+  u64 get_nblocks() const {
+    return inner.nblocks;
+  }
+  u64 get_ninodes() const {
+    return inner.ninodes;
+  }
 
 private:
-  explicit SuperBlock(std::shared_ptr<BlockManager> bm) : bm(bm) {}
+  explicit SuperBlock(std::shared_ptr<BlockManager> bm) : bm(bm) {
+  }
 };
 
 } // namespace chfs

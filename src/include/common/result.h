@@ -16,13 +16,19 @@ template <typename T, typename E> class Result {
   bool hasValue;
 
 public:
-  Result(const T &value) : data(value), hasValue(true) {}
+  Result(const T &value) : data(value), hasValue(true) {
+  }
 
-  Result(const E &error) : data(error), hasValue(false) {}
+  Result(const E &error) : data(error), hasValue(false) {
+  }
 
-  auto is_ok() const -> bool { return hasValue; }
+  auto is_ok() const -> bool {
+    return hasValue;
+  }
 
-  auto is_err() const -> bool { return !hasValue; }
+  auto is_err() const -> bool {
+    return !hasValue;
+  }
 
   auto unwrap() const -> T {
     if (hasValue) {

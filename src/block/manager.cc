@@ -29,7 +29,8 @@ auto initialize_file(int fd, u64 total_file_sz) {
  * @input db_file: database file name
  */
 BlockManager::BlockManager(const std::string &file)
-    : BlockManager(file, KDefaultBlockCnt) {}
+    : BlockManager(file, KDefaultBlockCnt) {
+}
 
 /**
  * Creates a new block manager that writes to a file-backed block device.
@@ -76,7 +77,8 @@ BlockManager::BlockManager(const std::string &file, usize block_cnt)
   CHFS_ASSERT(this->block_data != MAP_FAILED, "Failed to mmap the data");
 }
 
-BlockManager::BlockManager(const std::string &file, usize block_cnt, bool is_log_enabled)
+BlockManager::BlockManager(const std::string &file, usize block_cnt,
+                           bool is_log_enabled)
     : file_name_(file), block_cnt(block_cnt), in_memory(false) {
   this->write_fail_cnt = 0;
   this->maybe_failed = false;
@@ -92,7 +94,6 @@ auto BlockManager::write_block(block_id_t block_id, const u8 *data)
       return KNullOk;
     }
   }
-
 
   if (block_id >= this->block_cnt) {
     return ChfsNullResult{ErrorType::INVALID_ARG};
@@ -148,14 +149,15 @@ auto BlockManager::sync(block_id_t block_id) -> ChfsNullResult {
   }
 
   auto res = msync(this->block_data + block_id * this->block_sz, this->block_sz,
-        MS_SYNC | MS_INVALIDATE);
+                   MS_SYNC | MS_INVALIDATE);
   if (res != 0)
     return ChfsNullResult(ErrorType::INVALID);
   return KNullOk;
 }
 
 auto BlockManager::flush() -> ChfsNullResult {
-  auto res = msync(this->block_data, this->block_sz * this->block_cnt, MS_SYNC | MS_INVALIDATE);
+  auto res = msync(this->block_data, this->block_sz * this->block_cnt,
+                   MS_SYNC | MS_INVALIDATE);
   if (res != 0)
     return ChfsNullResult(ErrorType::INVALID);
   return KNullOk;

@@ -17,7 +17,8 @@ CommitLog::CommitLog(std::shared_ptr<BlockManager> bm,
     : is_checkpoint_enabled_(is_checkpoint_enabled), bm_(bm) {
 }
 
-CommitLog::~CommitLog() {}
+CommitLog::~CommitLog() {
+}
 
 // {Your code here}
 auto CommitLog::get_log_entry_num() -> usize {

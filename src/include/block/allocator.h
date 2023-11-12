@@ -23,8 +23,8 @@ class InodeManager;
 /**
  * BlockManager implements a block allocator to manage blocks of the manager
  * It internally uses bitmap for the management.
- * Note that the block allocator is **not** thread-safe. In lab2, you should make
- * it thread-safe.
+ * Note that the block allocator is **not** thread-safe. In lab2, you should
+ * make it thread-safe.
  *
  * # Example
  *
@@ -69,7 +69,9 @@ public:
   BlockAllocator(std::shared_ptr<BlockManager> bm, usize bitmap_block_id,
                  bool will_initialize = true);
 
-  auto total_bitmap_block() -> usize { return this->bitmap_block_cnt; }
+  auto total_bitmap_block() -> usize {
+    return this->bitmap_block_cnt;
+  }
 
   /**
    * Count the number of free blocks.

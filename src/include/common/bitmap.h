@@ -36,12 +36,15 @@ public:
    *
    * By default, we don't zero the bitmap
    */
-  Bitmap(u8 *data, usize payload) : data(data), payload(payload) {}
+  Bitmap(u8 *data, usize payload) : data(data), payload(payload) {
+  }
 
   /**
    * Zero the bitmap
    */
-  auto zeroed() { memset(data, 0, payload); }
+  auto zeroed() {
+    memset(data, 0, payload);
+  }
 
   /**
    * Set the bit at the index

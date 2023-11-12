@@ -116,7 +116,9 @@ public:
    *
    * @param name: The name of the handler.
    */
-  void unbind(std::string const &name) { server->unbind(name); }
+  void unbind(std::string const &name) {
+    server->unbind(name);
+  }
 
   /**
    * Gets all the bound names.
@@ -124,7 +126,9 @@ public:
    * This function returns a list of all names which have already been bound to
    * handlers.
    */
-  auto names() -> std::vector<std::string> { return server->names(); }
+  auto names() -> std::vector<std::string> {
+    return server->names();
+  }
 
   /**
    * Stops the server.

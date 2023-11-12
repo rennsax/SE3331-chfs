@@ -22,6 +22,7 @@ namespace chfs {
  */
 class FileOperation {
   friend class MetadataServer;
+
 protected:
   // Feel free to remove them if you don't want to implement the inode-based
   // filesystem
@@ -159,8 +160,8 @@ public:
    * @param parent the id of the parent
    * @param name the name of the directory
    */
-  auto mk_helper_metadata_server(inode_id_t parent, const char *name, InodeType type)
-      -> ChfsResult<inode_id_t>;
+  auto mk_helper_metadata_server(inode_id_t parent, const char *name,
+                                 InodeType type) -> ChfsResult<inode_id_t>;
 
   /**
    * Create a directory at the parent
@@ -200,13 +201,15 @@ public:
 
 protected:
   auto mk_helper_handler(inode_id_t parent, const char *name,
-      std::function<ChfsResult<inode_id_t>()> alloc_node) -> ChfsResult<inode_id_t>;
+                         std::function<ChfsResult<inode_id_t>()> alloc_node)
+      -> ChfsResult<inode_id_t>;
 
 private:
   FileOperation(std::shared_ptr<BlockManager> bm,
                 std::shared_ptr<InodeManager> im,
                 std::shared_ptr<BlockAllocator> ba)
-      : block_manager_(bm), inode_manager_(im), block_allocator_(ba) {}
+      : block_manager_(bm), inode_manager_(im), block_allocator_(ba) {
+  }
 };
 
 } // namespace chfs

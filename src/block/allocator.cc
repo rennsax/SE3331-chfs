@@ -4,7 +4,8 @@
 namespace chfs {
 
 BlockAllocator::BlockAllocator(std::shared_ptr<BlockManager> block_manager)
-    : BlockAllocator(std::move(block_manager), 0, true) {}
+    : BlockAllocator(std::move(block_manager), 0, true) {
+}
 
 // Your implementation
 BlockAllocator::BlockAllocator(std::shared_ptr<BlockManager> block_manager,

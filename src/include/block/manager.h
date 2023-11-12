@@ -69,7 +69,7 @@ public:
   /**
    * Creates a new block manager that writes to a file-backed block device.
    * It reserves some blocks for recording logs.
-   * 
+   *
    * @param block_file the file name of the  file to write to
    * @param block_cnt the number of blocks in the device
    * @param is_log_enabled whether to enable log
@@ -114,17 +114,23 @@ public:
   /**
    * Get the total number of blocks in the block manager
    */
-  auto total_blocks() const -> usize { return this->block_cnt; }
+  auto total_blocks() const -> usize {
+    return this->block_cnt;
+  }
 
   /**
    * Get the block size of the device managed by the manager
    */
-  auto block_size() const -> usize { return this->block_sz; }
+  auto block_size() const -> usize {
+    return this->block_sz;
+  }
 
   /**
    * Get the block data pointer of the manager
    */
-  auto unsafe_get_block_ptr() const -> u8 * { return this->block_data; }
+  auto unsafe_get_block_ptr() const -> u8 * {
+    return this->block_data;
+  }
 
   /**
    * flush the data of a block into disk

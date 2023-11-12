@@ -2,7 +2,9 @@
 
 namespace chfs {
 
-auto Inode::begin() -> InodeIterator { return InodeIterator(this, 0); }
+auto Inode::begin() -> InodeIterator {
+  return InodeIterator(this, 0);
+}
 
 auto Inode::end() -> InodeIterator {
   return InodeIterator(this, this->nblocks);

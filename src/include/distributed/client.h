@@ -28,8 +28,14 @@ namespace chfs {
 class ChfsClient {
 
 public:
-  enum class ServerType { DATA_SERVER, METADATA_SERVER };
-  enum class FileType : u8 { REGULAR = 1, DIRECTORY }; // for passing param
+  enum class ServerType {
+    DATA_SERVER,
+    METADATA_SERVER
+  };
+  enum class FileType : u8 {
+    REGULAR = 1,
+    DIRECTORY
+  }; // for passing param
 
   /**
    * Constructor.

@@ -5,7 +5,8 @@
 
 namespace chfs {
 
-ChfsClient::ChfsClient() : num_data_servers(0) {}
+ChfsClient::ChfsClient() : num_data_servers(0) {
+}
 
 auto ChfsClient::reg_server(ServerType type, const std::string &address,
                             u16 port, bool reliable) -> ChfsNullResult {
@@ -81,7 +82,7 @@ auto ChfsClient::read_file(inode_id_t id, usize offset, usize size)
 auto ChfsClient::write_file(inode_id_t id, usize offset, std::vector<u8> data)
     -> ChfsNullResult {
   // TODO: Implement this function.
-  UNIMPLEMENTED();      
+  UNIMPLEMENTED();
   return KNullOk;
 }
 
