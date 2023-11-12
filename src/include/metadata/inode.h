@@ -48,7 +48,9 @@ public:
   u64 ctime = 0;
   u64 size = 0;
 
-  auto set_mtime(u64 t) { mtime = t; }
+  auto set_mtime(u64 t) {
+    mtime = t;
+  }
 
   auto set_all_time(u64 t) {
     atime = t;
@@ -107,33 +109,45 @@ public:
   /**
    * Get type of the inode
    */
-  auto get_type() const -> InodeType { return type; }
+  auto get_type() const -> InodeType {
+    return type;
+  }
 
   /**
    * Get file attr of the inode
    */
-  auto get_attr() const -> FileAttr { return inner_attr; }
+  auto get_attr() const -> FileAttr {
+    return inner_attr;
+  }
 
   /**
    * Get the file size
    */
-  auto get_size() const -> u64 { return inner_attr.size; }
+  auto get_size() const -> u64 {
+    return inner_attr.size;
+  }
 
   /**
    * Get the number of blocks of the inode
    */
-  auto get_nblocks() const -> u32 { return nblocks; }
+  auto get_nblocks() const -> u32 {
+    return nblocks;
+  }
 
   /**
    * Get the number of direct blocks stored in this inode
    */
-  auto get_direct_block_num() const -> u32 { return nblocks - 1; }
+  auto get_direct_block_num() const -> u32 {
+    return nblocks - 1;
+  }
 
   /**
    * Determine whether the block ID can be stored directly in the inode
    * @param idx the place of the block ID to store
    */
-  auto is_direct_block(usize idx) const -> bool { return idx < (nblocks - 1); }
+  auto is_direct_block(usize idx) const -> bool {
+    return idx < (nblocks - 1);
+  }
 
   /**
    * Get the maximum file size supported by the inode
@@ -174,7 +188,9 @@ public:
   /**
    * Set the direct block ID given an index
    */
-  auto set_block_direct(usize idx, block_id_t bid) { this->blocks[idx] = bid; }
+  auto set_block_direct(usize idx, block_id_t bid) {
+    this->blocks[idx] = bid;
+  }
 
   /**
    * Warning: this function is particular dangerous.
@@ -245,9 +261,11 @@ class InodeIterator {
   /**
    * Constructors: note that we don't check the inode
    */
-  explicit InodeIterator(Inode *inode, int idx) : cur_idx(idx), inode(inode) {}
+  explicit InodeIterator(Inode *inode, int idx) : cur_idx(idx), inode(inode) {
+  }
 
-  InodeIterator(Inode *inode) : InodeIterator(inode, 0) {}
+  InodeIterator(Inode *inode) : InodeIterator(inode, 0) {
+  }
 
 public:
   InodeIterator &operator++() {
@@ -267,7 +285,9 @@ public:
   bool operator!=(const InodeIterator &rhs) const {
     return cur_idx != rhs.cur_idx;
   }
-  block_id_t &operator*() const { return inode->blocks[cur_idx]; }
+  block_id_t &operator*() const {
+    return inode->blocks[cur_idx];
+  }
 };
 
 } // namespace chfs
