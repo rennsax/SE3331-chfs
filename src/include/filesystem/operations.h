@@ -12,6 +12,7 @@
 #pragma once
 
 #include "metadata/manager.h"
+#include <functional>
 #include <sys/stat.h>
 
 namespace chfs {
@@ -61,6 +62,8 @@ public:
    * @return the id of the inode
    */
   auto alloc_inode(InodeType type) -> ChfsResult<inode_id_t>;
+
+  ChfsResult<inode_id_t> alloc_metadata_server_inode(InodeType type);
 
   /**
    * Get the file attribute of the given inode
@@ -151,6 +154,15 @@ public:
       -> ChfsResult<inode_id_t>;
 
   /**
+   * Helper function to create directory or file. Only for lab2.
+   *
+   * @param parent the id of the parent
+   * @param name the name of the directory
+   */
+  auto mk_helper_metadata_server(inode_id_t parent, const char *name, InodeType type)
+      -> ChfsResult<inode_id_t>;
+
+  /**
    * Create a directory at the parent
    *
    * @param parent the id of the parent
@@ -185,6 +197,10 @@ public:
    * @return  ENOTEMPTY if the deleted file is a directory
    */
   auto unlink(inode_id_t parent, const char *name) -> ChfsNullResult;
+
+protected:
+  auto mk_helper_handler(inode_id_t parent, const char *name,
+      std::function<ChfsResult<inode_id_t>()> alloc_node) -> ChfsResult<inode_id_t>;
 
 private:
   FileOperation(std::shared_ptr<BlockManager> bm,

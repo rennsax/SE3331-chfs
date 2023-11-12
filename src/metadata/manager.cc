@@ -10,8 +10,12 @@ namespace chfs {
  * Transform a raw inode ID that index the table to a logic inode ID (and vice
  * verse) This prevents the inode ID with 0 to mix up with the invalid one
  */
+#ifndef RAW_2_LOGIC
 #define RAW_2_LOGIC(i) (i + 1)
+#endif
+#ifndef LOGIC_2_RAW
 #define LOGIC_2_RAW(i) (i - 1)
+#endif
 
 InodeManager::InodeManager(std::shared_ptr<BlockManager> bm,
                            u64 max_inode_supported)
@@ -69,50 +73,11 @@ auto InodeManager::create_from_block_manager(std::shared_ptr<BlockManager> bm,
 // { Your code here }
 auto InodeManager::allocate_inode(InodeType type, block_id_t bid)
     -> ChfsResult<inode_id_t> {
-  auto iter_res = BlockIterator::create(this->bm.get(), 1 + n_table_blocks,
-                                        1 + n_table_blocks + n_bitmap_blocks);
-  if (iter_res.is_err()) {
-    return ChfsResult<inode_id_t>(iter_res.unwrap_error());
-  }
+  return this->allocate_inode_template<Inode>(type, bid);
+}
 
-  inode_id_t count = 0;
-
-  // Find an available inode ID.
-  for (auto iter = iter_res.unwrap(); iter.has_next();
-       iter.next(bm->block_size()).unwrap(), count++) {
-    auto data = iter.unsafe_get_value_ptr<u8>();
-    auto bitmap = Bitmap(data, bm->block_size());
-    auto free_idx = bitmap.find_first_free();
-
-    if (free_idx) {
-      // If there is an available inode ID.
-
-      // Setup the bitmap.
-      bitmap.set(free_idx.value());
-      auto res = iter.flush_cur_block();
-      if (res.is_err()) {
-        return ChfsResult<inode_id_t>(res.unwrap_error());
-      }
-
-      // 1. Initialize the inode with the given type.
-      std::vector<u8> buffer(this->bm->block_size());
-      Inode inode{type, this->bm->block_size()};
-      inode.flush_to_buffer(buffer.data());
-      if (auto res = this->bm->write_block(bid, buffer.data()); res.is_err()) {
-        return res.unwrap_error();
-      }
-      // 2. Setup the inode table.
-      if (auto res = this->set_table(free_idx.value(), bid); res.is_err()) {
-        return res.unwrap_error();
-      }
-      // 3. Return the id of the allocated inode.
-      //    You may have to use the `RAW_2_LOGIC` macro
-      //    to get the result inode id.
-      return ChfsResult<inode_id_t>(RAW_2_LOGIC(free_idx.value()));
-    }
-  }
-
-  return ChfsResult<inode_id_t>(ErrorType::OUT_OF_RESOURCE);
+ChfsResult<inode_id_t> InodeManager::allocate_regular_inode(block_id_t bid) {
+  return this->allocate_inode_template<RegularInode>(InodeType::FILE, bid);
 }
 
 // { Your code here }

@@ -179,25 +179,45 @@ auto FileOperation::lookup(inode_id_t id, const char *name)
 auto FileOperation::mk_helper(inode_id_t /* parent id */ id, const char *name,
                               InodeType type) -> ChfsResult<inode_id_t> {
 
+  return mk_helper_handler(id, name, [this, type]() -> ChfsResult<inode_id_t> {
+    return this->alloc_inode(type);
+  });
+}
+
+auto FileOperation::mk_helper_metadata_server(inode_id_t /* parent id */ id,
+                                              const char *name, InodeType type)
+    -> ChfsResult<inode_id_t> {
+
+  return mk_helper_handler(id, name, [this, type]() -> ChfsResult<inode_id_t> {
+    return this->alloc_metadata_server_inode(type);
+  });
+}
+
+auto FileOperation::mk_helper_handler(
+    inode_id_t parent, const char *name,
+    std::function<ChfsResult<inode_id_t>()> alloc_node)
+    -> ChfsResult<inode_id_t> {
   // 1. Check if `name` already exists in the parent.
   //    If already exist, return ErrorType::AlreadyExist.
-  if (this->lookup(id, name).is_ok()) {
+  if (this->lookup(parent, name).is_ok()) {
     return ErrorType::AlreadyExist;
   }
   // 2. Create the new inode.
-  const auto alloc_res = this->alloc_inode(type);
+  auto alloc_res = alloc_node();
+
   if (alloc_res.is_err()) {
     return alloc_res.unwrap_error();
   }
-  const auto inode_id = alloc_res.unwrap();
+  auto inode_id = alloc_res.unwrap();
   // 3. Append the new entry to the parent directory.
-  auto read_res = read_raw_content(this, id);
+  auto read_res = read_raw_content(this, parent);
   if (read_res.is_err()) {
     return read_res.unwrap_error();
   }
   auto dir_content = read_res.unwrap();
   auto dir_content_new = append_to_directory(dir_content, name, inode_id);
-  if (auto res = write_raw_content(this, id, dir_content_new); res.is_err()) {
+  if (auto res = write_raw_content(this, parent, dir_content_new);
+      res.is_err()) {
     return res.unwrap_error();
   }
   return inode_id;

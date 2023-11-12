@@ -16,7 +16,30 @@ auto FileOperation::alloc_inode(InodeType type) -> ChfsResult<inode_id_t> {
   // 2. Allocate an inode.
   // 3. Initialize the inode block
   //    and write the block back to block manager.
-  const auto res = this->inode_manager_->allocate_inode(type, block_id);
+  auto res = this->inode_manager_->allocate_inode(type, block_id);
+  if (res.is_err()) {
+    return res.unwrap_error();
+  }
+
+  return res.unwrap();
+}
+
+ChfsResult<inode_id_t> FileOperation::alloc_metadata_server_inode(
+    InodeType type) {
+  // 1. Allocate a block for the inode.
+  auto block_id_res = this->block_allocator_->allocate();
+  if (block_id_res.is_err()) {
+    return block_id_res.unwrap_error();
+  }
+  auto block_id = block_id_res.unwrap();
+  // 2. Allocate an inode.
+  // 3. Initialize the inode block
+  //    and write the block back to block manager.
+  if (type == InodeType::FILE) {
+    return this->inode_manager_->allocate_regular_inode(block_id);
+  }
+
+  auto res = this->inode_manager_->allocate_inode(type, block_id);
   if (res.is_err()) {
     return res.unwrap_error();
   }

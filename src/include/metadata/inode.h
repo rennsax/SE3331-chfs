@@ -290,4 +290,55 @@ public:
   }
 };
 
+/**
+ * @brief Regular Inode in the metadata server. Only for lab2.
+ *
+ * A regular inode also occupies exactly one block.
+ * The differences:
+ *    1) the inode never points to some blocks in the metadata server,
+ *    2) instead, it directly stores <block_id, mac_id> pairs, which are
+ *       used to find the file data in other slave data servers.
+ * Suppose we have a regular inode in a block, taking 4096 bytes,
+ * then the layout of the regular inode is:
+ *    type (4) + attr (8*4=32) + nblocks (4)
+ *    + block_mp (8 + 4) * n_blocks <= block_size = 4096
+ * We can infer that max_nblocks == 338.
+ *
+ */
+struct RegularInode {
+  using MapEntity = std::pair<block_id_t, mac_id_t>;
+
+  FileAttr inner_attr;
+  u32 nblocks; // number of <block_id, mac_id> pairs
+  // u32 block_size;
+  // u32 n_blocks;
+  std::vector<MapEntity> block_mp;
+
+  RegularInode(InodeType type, usize block_size)
+  // : block_size(block_size), n_blocks((block_size - sizeof(FileAttr) -
+  //                                     sizeof(u32) /* inode type */) /
+  //                                    sizeof(block_id_t)),
+  //   block_mp(n_blocks)
+  {
+    CHFS_VERIFY(type == InodeType::FILE,
+                "the inode type of RegularInode must be FILE!");
+  }
+
+  /**
+   * Write the Inode data to a buffer.
+   * Note that: it won't flush the blocks.
+   *
+   * # Warm
+   * This function is only called during construction.
+   *
+   * @param buffer: the buffer to write to and must be in [BLCOK_SIZE]
+   */
+  void flush_to_buffer(u8 *buffer) const {
+    InodeType type = InodeType::FILE;
+    memcpy(buffer, &type, sizeof(type));                         // 4 bytes
+    memcpy(buffer, &this->inner_attr, sizeof(this->inner_attr)); // 32 bytes
+    memcpy(buffer, &this->nblocks, sizeof(this->nblocks));       // 4 bytes
+  }
+};
+
 } // namespace chfs
