@@ -224,17 +224,42 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
 // {Your code here}
 auto MetadataServer::free_block(inode_id_t id, block_id_t block_id,
                                 mac_id_t machine_id) -> bool {
-  // TODO: Implement this function.
-  UNIMPLEMENTED();
+  const auto rm_callback =
+      [=](const RegularInode::BlockEntity &entity) -> bool {
+    return entity.bid == block_id && entity.mid == machine_id;
+  };
 
-  return false;
+  auto rm_res =
+      this->operation_->delete_block_from_regular_inode(id, rm_callback);
+
+  if (rm_res.is_err()) {
+    // Error may occur because the inode isn't a regular inode.
+    return false;
+  }
+  CHFS_VERIFY(rm_res.unwrap() <= 1, "delete more than one block entities");
+
+  if (rm_res.unwrap() == 0) {
+    // The block to delete isn't shown up in the inode.
+    return false;
+  }
+
+  // Free the block from the slave server.
+  if (auto res = this->clients_.at(machine_id)->call("free_block", block_id);
+      res.is_err() || !res.unwrap()->as<bool>()) {
+    return false;
+  }
+  return true;
 }
 
 // {Your code here}
 auto MetadataServer::readdir(inode_id_t node)
     -> std::vector<std::pair<std::string, inode_id_t>> {
   std::list<DirectoryEntry> entities{};
-  ::chfs::read_directory(this->operation_.get(), node, entities);
+  if (auto read_res =
+          ::chfs::read_directory(this->operation_.get(), node, entities);
+      read_res.is_err()) {
+    return {};
+  }
   std::vector<std::pair<std::string, inode_id_t>> res(entities.size());
 
   std::transform(
@@ -249,10 +274,25 @@ auto MetadataServer::readdir(inode_id_t node)
 // {Your code here}
 auto MetadataServer::get_type_attr(inode_id_t id)
     -> std::tuple<u64, u64, u64, u64, u8> {
-  // TODO: Implement this function.
-  UNIMPLEMENTED();
 
-  return {};
+  static constexpr auto inode_type_cast = [](InodeType type) -> u8 {
+    switch (type) {
+    case InodeType::FILE:
+      return RegularFileType;
+    case InodeType::Directory:
+      return DirectoryType;
+    case InodeType::Unknown:
+    default:
+      return 0;
+    }
+  };
+  auto res = this->operation_->get_type_attr(id);
+  if (res.is_err()) {
+    return {};
+  }
+  auto [inode_type, attr] = res.unwrap();
+  return std::make_tuple(attr.size, attr.atime, attr.mtime, attr.ctime,
+                         inode_type_cast(inode_type));
 }
 
 auto MetadataServer::reg_server(const std::string &address, u16 port,

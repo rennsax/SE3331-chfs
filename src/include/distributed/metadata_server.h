@@ -110,6 +110,7 @@ public:
    *
    * Also note that we don't use an enum for `type` since it needs extra
    * support by `msgpack` for serialization.
+   * @return 0 on error
    */
   auto mknode(u8 type, inode_id_t parent, const std::string &name)
       -> inode_id_t;
@@ -162,6 +163,7 @@ public:
    * A RPC handler for client. It returns the content of a directory.
    *
    * @param node: The inode id of the directory
+   * @return empty on error, which also denotes an empty directory.
    */
   auto readdir(inode_id_t node)
       -> std::vector<std::pair<std::string, inode_id_t>>;
