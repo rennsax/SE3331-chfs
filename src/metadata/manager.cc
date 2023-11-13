@@ -167,8 +167,9 @@ auto InodeManager::get_type(inode_id_t id) -> ChfsResult<InodeType> {
   if (res.is_err()) {
     return ChfsResult<InodeType>(res.unwrap_error());
   }
-  Inode *inode_p = reinterpret_cast<Inode *>(buffer.data());
-  return ChfsResult<InodeType>(inode_p->type);
+  InodeType type{};
+  memcpy(&type, buffer.data(), sizeof(type));
+  return type;
 }
 
 auto InodeManager::get_type_attr(inode_id_t id)
