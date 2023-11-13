@@ -120,7 +120,19 @@ private:
   std::unique_ptr<RpcServer> server_;
   std::shared_ptr<BlockAllocator> block_allocator_;
 
+  /**
+   * @brief Read current version id of the block.
+   *
+   * @param block_id
+   * @return version_t
+   */
   version_t read_version(block_id_t block_id) const;
+  /**
+   * @brief Increase the version id of the block by 1.
+   *
+   * @param block_id
+   * @return version_t the final version id, i.e. previous_vid + 1
+   */
   version_t increase_version(block_id_t block_id);
 };
 
