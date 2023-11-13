@@ -101,7 +101,8 @@ public:
   auto write_file(inode_id_t, const std::vector<u8> &content) -> ChfsNullResult;
 
   /**
-   * @brief Append an allocated block to the regular inode.
+   * @brief Append an allocated block to the regular inode. Only for lab2.
+   *
    *
    * @param id expected to be a regular inode, otherwise return error.
    * @param block the block information
@@ -109,6 +110,18 @@ public:
    */
   ChfsNullResult append_block_to_regular_inode(
       inode_id_t id, const RegularInode::BlockEntity &block);
+
+  /**
+   * @brief Delete some block entities from the regular inode. Only for lab2.
+   *
+   * @param id
+   * @param predicate a callback to determine whether to delete the block
+   *                  entity.
+   * @return ChfsResult<u64> the number of block entities that are deleted.
+   */
+  ChfsResult<u32> delete_block_from_regular_inode(
+      inode_id_t id,
+      std::function<bool(const RegularInode::BlockEntity &)> predicate);
 
   /**
    * Write the content to the blocks pointed by the inode
@@ -227,6 +240,14 @@ protected:
   auto mk_helper_handler(inode_id_t parent, const char *name,
                          std::function<ChfsResult<inode_id_t>()> alloc_node)
       -> ChfsResult<inode_id_t>;
+
+  /**
+   * @brief Get the regular inode object. Only for lab2.
+   *
+   * @return the block id and the inode object.
+   * @return error if the inode isn't regular inode.
+   */
+  ChfsResult<std::pair<block_id_t, RegularInode>> get_regular_inode(inode_id_t);
 
 private:
   FileOperation(std::shared_ptr<BlockManager> bm,

@@ -87,26 +87,52 @@ auto FileOperation::write_file_w_off(inode_id_t id, const char *data, u64 sz,
 ChfsNullResult FileOperation::append_block_to_regular_inode(
     inode_id_t id, const RegularInode::BlockEntity &block) {
 
+  auto get_regular_inode_res = this->get_regular_inode(id);
+  if (get_regular_inode_res.is_err()) {
+    return get_regular_inode_res.unwrap_error();
+  }
+  auto [inode_bid, inode] = get_regular_inode_res.unwrap();
+
   std::vector<u8> buffer(this->block_manager_->block_size());
-  auto inode_bid_res = this->inode_manager_->read_inode(id, buffer);
-  if (inode_bid_res.is_err()) {
-    return inode_bid_res.unwrap_error();
-  }
-  auto inode_res = RegularInode::from(buffer);
-  if (inode_res.is_err()) {
-    return inode_res.unwrap_error();
-  }
-  auto inode = inode_res.unwrap();
+
   inode.blocks.push_back(block);
   inode.inner_attr.mtime = time(NULL);
   inode.nblocks++;
   inode.flush_to_buffer(buffer.data());
-  if (auto res = this->block_manager_->write_block(inode_bid_res.unwrap(),
-                                                   buffer.data());
+  if (auto res = this->block_manager_->write_block(inode_bid, buffer.data());
       res.is_err()) {
     return res.unwrap_error();
   }
   return KNullOk;
+}
+
+ChfsResult<u32> FileOperation::delete_block_from_regular_inode(
+    inode_id_t id,
+    std::function<bool(const RegularInode::BlockEntity &)> predicate) {
+  auto get_regular_inode_res = this->get_regular_inode(id);
+  if (get_regular_inode_res.is_err()) {
+    return get_regular_inode_res.unwrap_error();
+  }
+  auto [inode_bid, inode] = get_regular_inode_res.unwrap();
+
+  std::vector<u8> buffer(this->block_manager_->block_size());
+  // Remove block entities with the predicate.
+  auto after_rm_end =
+      std::remove_if(begin(inode.blocks), end(inode.blocks), predicate);
+  inode.blocks.erase(after_rm_end, inode.blocks.end());
+
+  // Adjust the some metadata.
+  auto rm_cnt = inode.nblocks - inode.blocks.size();
+  inode.nblocks -= rm_cnt;
+  inode.inner_attr.mtime = time(NULL);
+
+  // Write into the disk.
+  inode.flush_to_buffer(buffer.data());
+  if (auto res = this->block_manager_->write_block(inode_bid, buffer.data());
+      res.is_err()) {
+    return res.unwrap_error();
+  }
+  return rm_cnt;
 }
 
 // {Your code here}
@@ -360,16 +386,11 @@ err_ret:
 
 ChfsResult<std::vector<RegularInode::BlockEntity>> FileOperation::
     read_regular_node(inode_id_t id) {
-  // Read the inode
-  std::vector<u8> buffer(this->block_manager_->block_size());
-  if (auto res = this->inode_manager_->read_inode(id, buffer); res.is_err()) {
-    return res.unwrap_error();
+  auto get_res = this->get_regular_inode(id);
+  if (get_res.is_err()) {
+    return get_res.unwrap_error();
   }
-  auto inode_res = RegularInode::from(buffer);
-  if (inode_res.is_err()) {
-    return inode_res.unwrap_error();
-  }
-  return inode_res.unwrap().blocks;
+  return get_res.unwrap().second.blocks;
 }
 
 auto FileOperation::read_file_w_off(inode_id_t id, u64 sz, u64 offset)
@@ -409,6 +430,20 @@ auto FileOperation::resize(inode_id_t id, u64 sz) -> ChfsResult<FileAttr> {
 
   attr.size = sz;
   return ChfsResult<FileAttr>(attr);
+}
+
+ChfsResult<std::pair<block_id_t, RegularInode>> FileOperation::
+    get_regular_inode(inode_id_t id) {
+  std::vector<u8> buffer(this->block_manager_->block_size());
+  auto inode_bid_res = this->inode_manager_->read_inode(id, buffer);
+  if (inode_bid_res.is_err()) {
+    return inode_bid_res.unwrap_error();
+  }
+  auto inode_res = RegularInode::from(buffer);
+  if (inode_res.is_err()) {
+    return inode_res.unwrap_error();
+  }
+  return std::make_pair(inode_bid_res.unwrap(), inode_res.unwrap());
 }
 
 } // namespace chfs
