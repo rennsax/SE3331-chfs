@@ -22,7 +22,8 @@ RUN apt-get -y update && \
       zlib1g-dev && \
     update-alternatives --install /usr/bin/cc cc /usr/bin/clang-14 100 && \
     update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-14 100 && \
-    ln -s /usr/bin/clang-format-14 /usr/bin/clang-format
+    ln -s /usr/bin/clang-format-14 /usr/bin/clang-format && \
+    ln -s /usr/bin/clang-tidy-14 /usr/bin/clang-tidy && \
 
 COPY mypasswd /tmp
 
