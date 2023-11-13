@@ -157,8 +157,9 @@ auto InodeManager::get_attr(inode_id_t id) -> ChfsResult<FileAttr> {
   if (res.is_err()) {
     return ChfsResult<FileAttr>(res.unwrap_error());
   }
-  Inode *inode_p = reinterpret_cast<Inode *>(buffer.data());
-  return ChfsResult<FileAttr>(inode_p->inner_attr);
+  FileAttr attr{};
+  memcpy(&attr, buffer.data() + sizeof(InodeType), sizeof(attr));
+  return attr;
 }
 
 auto InodeManager::get_type(inode_id_t id) -> ChfsResult<InodeType> {
@@ -179,9 +180,11 @@ auto InodeManager::get_type_attr(inode_id_t id)
   if (res.is_err()) {
     return ChfsResult<std::pair<InodeType, FileAttr>>(res.unwrap_error());
   }
-  Inode *inode_p = reinterpret_cast<Inode *>(buffer.data());
-  return ChfsResult<std::pair<InodeType, FileAttr>>(
-      std::make_pair(inode_p->type, inode_p->inner_attr));
+  InodeType type{};
+  FileAttr attr{};
+  memcpy(&type, buffer.data(), sizeof(type));
+  memcpy(&attr, buffer.data() + sizeof(type), sizeof(attr));
+  return std::make_pair(type, attr);
 }
 
 // Note: the buffer must be as large as block size
