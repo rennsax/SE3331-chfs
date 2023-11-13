@@ -72,9 +72,9 @@ DataServer::~DataServer() {
 // {Your code here}
 auto DataServer::read_data(block_id_t block_id, usize offset, usize len,
                            version_t version) -> std::vector<u8> {
-  if (this->read_version(block_id) != version) {
-    return {};
-  }
+  // if (this->read_version(block_id) != version) {
+  //   return {};
+  // }
   auto bm = this->block_allocator_->bm;
   std::vector<u8> buffer(bm->block_size()), res(len);
   if (auto read_res = bm->read_block(block_id, buffer.data());

@@ -84,6 +84,27 @@ auto FileOperation::write_file_w_off(inode_id_t id, const char *data, u64 sz,
   return ChfsResult<u64>(sz);
 }
 
+ChfsNullResult FileOperation::append_block_to_regular_inode(
+    inode_id_t id, const RegularInode::BlockEntity &block) {
+
+  std::vector<u8> buffer(this->block_manager_->block_size());
+  auto inode_bid_res = this->inode_manager_->read_inode(id, buffer);
+  if (inode_bid_res.is_err()) {
+    return inode_bid_res.unwrap_error();
+  }
+  RegularInode inode{buffer};
+  inode.blocks.push_back(block);
+  inode.inner_attr.mtime = time(NULL);
+  inode.nblocks++;
+  inode.flush_to_buffer(buffer.data());
+  if (auto res = this->block_manager_->write_block(inode_bid_res.unwrap(),
+                                                   buffer.data());
+      res.is_err()) {
+    return res.unwrap_error();
+  }
+  return KNullOk;
+}
+
 // {Your code here}
 auto FileOperation::write_file(inode_id_t id, const std::vector<u8> &content)
     -> ChfsNullResult {
@@ -240,6 +261,7 @@ auto FileOperation::write_file(inode_id_t id, const std::vector<u8> &content)
 
   // finally, update the inode
   {
+    // TODO why set all the time
     inode_p->inner_attr.set_all_time(time(0));
 
     auto write_res =
@@ -330,6 +352,17 @@ auto FileOperation::read_file(inode_id_t id) -> ChfsResult<std::vector<u8>> {
 
 err_ret:
   return ChfsResult<std::vector<u8>>(error_code);
+}
+
+ChfsResult<std::vector<RegularInode::BlockEntity>> FileOperation::
+    read_regular_node(inode_id_t id) {
+  // Read the inode
+  std::vector<u8> buffer(this->block_manager_->block_size());
+  if (auto res = this->inode_manager_->read_inode(id, buffer); res.is_err()) {
+    return res.unwrap_error();
+  }
+  RegularInode inode{buffer};
+  return inode.blocks;
 }
 
 auto FileOperation::read_file_w_off(inode_id_t id, u64 sz, u64 offset)

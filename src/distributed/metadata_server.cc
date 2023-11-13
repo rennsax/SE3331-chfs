@@ -122,44 +122,103 @@ MetadataServer::MetadataServer(std::string const &address, u16 port,
 // {Your code here}
 auto MetadataServer::mknode(u8 type, inode_id_t parent, const std::string &name)
     -> inode_id_t {
-  // TODO: Implement this function.
-  UNIMPLEMENTED();
-
-  return 0;
+  static constexpr auto inode_type_cast = [](u8 type) -> InodeType {
+    switch (type) {
+    case RegularFileType:
+      return InodeType::FILE;
+    case DirectoryType:
+      return InodeType::Directory;
+    default:
+      return InodeType::Unknown;
+    }
+  };
+  auto mk_res = this->operation_->mk_helper_metadata_server(
+      parent, name.c_str(), inode_type_cast(type));
+  if (mk_res.is_err()) {
+    return 0;
+  }
+  return mk_res.unwrap();
 }
 
 // {Your code here}
 auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
     -> bool {
-  // TODO: Implement this function.
-  UNIMPLEMENTED();
 
-  return false;
+  auto to_unlink = this->lookup(parent, name);
+  if (to_unlink == 0) {
+    return false;
+  }
+  // type or file?
+  auto type_res = this->operation_->gettype(to_unlink);
+  if (type_res.is_err()) {
+    return false;
+  }
+  auto inode_type = type_res.unwrap();
+  if (inode_type == InodeType::Directory) {
+    auto dir_entities = this->readdir(to_unlink);
+    if (!dir_entities.empty()) {
+      // Not empty
+      return false;
+    }
+    if (auto rm_res = this->operation_->unlink(parent, name.c_str());
+        rm_res.is_err()) {
+      return false;
+    }
+  } else if (inode_type == InodeType::FILE) {
+    // TODO: Implement this function.
+    UNIMPLEMENTED();
+  } else {
+    return false;
+  }
+  return true;
 }
 
 // {Your code here}
 auto MetadataServer::lookup(inode_id_t parent, const std::string &name)
     -> inode_id_t {
-  // TODO: Implement this function.
-  UNIMPLEMENTED();
 
-  return 0;
+  auto lookup_res = this->operation_->lookup(parent, name.c_str());
+
+  return lookup_res.is_err() ? 0 : lookup_res.unwrap();
 }
 
 // {Your code here}
 auto MetadataServer::get_block_map(inode_id_t id) -> std::vector<BlockInfo> {
-  // TODO: Implement this function.
-  UNIMPLEMENTED();
+  if (auto type_res = this->operation_->gettype(id);
+      type_res.is_err() || type_res.unwrap() != InodeType::FILE) {
+    return {};
+  }
+  auto read_res = this->operation_->read_regular_node(id);
+  if (read_res.is_err()) {
+    return {};
+  }
+  auto block_entities = read_res.unwrap();
+  std::vector<BlockInfo> res(block_entities.size());
 
-  return {};
+  std::transform(begin(block_entities), end(block_entities), begin(res),
+                 [](const RegularInode::BlockEntity &entity) -> BlockInfo {
+                   return {entity.bid, entity.mid, entity.vid};
+                 });
+  return res;
 }
 
 // {Your code here}
 auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
-  // TODO: Implement this function.
-  UNIMPLEMENTED();
-
-  return {};
+  // Check if the inode is a regular inode. If not, return error.
+  if (auto type_res = this->operation_->gettype(id);
+      type_res.is_err() || type_res.unwrap() != InodeType::FILE) {
+    return {};
+  }
+  // Pick a random slave to allocate the block.
+  auto slave_id = this->generator.rand(1, this->num_data_servers);
+  auto alloc_response = this->clients_.at(slave_id)->call("alloc_block");
+  if (alloc_response.is_err()) {
+    return {};
+  }
+  auto [bid, vid] =
+      alloc_response.unwrap()->as<std::pair<block_id_t, version_t>>();
+  this->operation_->append_block_to_regular_inode(id, {bid, vid, slave_id});
+  return {bid, slave_id, vid};
 }
 
 // {Your code here}
@@ -174,10 +233,17 @@ auto MetadataServer::free_block(inode_id_t id, block_id_t block_id,
 // {Your code here}
 auto MetadataServer::readdir(inode_id_t node)
     -> std::vector<std::pair<std::string, inode_id_t>> {
-  // TODO: Implement this function.
-  UNIMPLEMENTED();
+  std::list<DirectoryEntry> entities{};
+  ::chfs::read_directory(this->operation_.get(), node, entities);
+  std::vector<std::pair<std::string, inode_id_t>> res(entities.size());
 
-  return {};
+  std::transform(
+      begin(entities), end(entities), begin(res),
+      [](DirectoryEntry &entity) -> std::pair<std::string, inode_id_t> {
+        return {std::move(entity.name), entity.id};
+      });
+
+  return res;
 }
 
 // {Your code here}

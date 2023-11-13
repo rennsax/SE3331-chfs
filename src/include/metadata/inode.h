@@ -301,43 +301,69 @@ public:
  * Suppose we have a regular inode in a block, taking 4096 bytes,
  * then the layout of the regular inode is:
  *    type (4) + attr (8*4=32) + nblocks (4)
- *    + block_mp (8 + 4) * n_blocks <= block_size = 4096
- * We can infer that max_nblocks == 338.
+ *    + block_mp (8+4+4) * n_blocks <= block_size = 4096
+ * We can infer that max_nblocks ~= 270.
  *
  */
 struct RegularInode {
-  using MapEntity = std::pair<block_id_t, mac_id_t>;
+  struct _BlockEntity {
+    block_id_t bid;
+    version_t vid;
+    mac_id_t mid;
+  };
+  using BlockEntity = _BlockEntity;
 
+  // This inode implies the file type.
+  // InodeType type = InodeType::FILE;
   FileAttr inner_attr;
   u32 nblocks; // number of <block_id, mac_id> pairs
-  // u32 block_size;
-  // u32 n_blocks;
-  std::vector<MapEntity> block_mp;
+  std::vector<BlockEntity> blocks;
 
-  RegularInode(InodeType type, usize block_size)
-  // : block_size(block_size), n_blocks((block_size - sizeof(FileAttr) -
-  //                                     sizeof(u32) /* inode type */) /
-  //                                    sizeof(block_id_t)),
-  //   block_mp(n_blocks)
-  {
+  /**
+   * @brief Construct a new RegularInode object with raw data
+   *
+   * @param inode_data the byte stream
+   */
+  RegularInode(const std::vector<u8> &inode_data) {
+    const u8 *buffer_pos = inode_data.data();
+    InodeType type{};
+    memcpy(&type, buffer_pos, sizeof(type));
+    buffer_pos += sizeof(InodeType);
+
+    CHFS_VERIFY(type == InodeType::FILE,
+                "cannot read a regular node from an inode from other type");
+
+    memcpy(&this->inner_attr, buffer_pos, sizeof(this->inner_attr));
+    buffer_pos += sizeof(this->inner_attr);
+    memcpy(&this->nblocks, buffer_pos, sizeof(this->nblocks));
+    buffer_pos += sizeof(this->nblocks);
+    blocks.resize(this->nblocks);
+    memcpy(this->blocks.data(), buffer_pos,
+           this->nblocks * sizeof(BlockEntity));
+  }
+
+  RegularInode(InodeType type, usize block_size) : inner_attr{}, nblocks{0} {
     CHFS_VERIFY(type == InodeType::FILE,
                 "the inode type of RegularInode must be FILE!");
+    inner_attr.set_all_time(time(0));
   }
 
   /**
-   * Write the Inode data to a buffer.
-   * Note that: it won't flush the blocks.
+   * Dump the Inode data to a buffer.
    *
-   * # Warm
-   * This function is only called during construction.
-   *
-   * @param buffer: the buffer to write to and must be in [BLCOK_SIZE]
+   * @param buffer: the buffer to write to and must be in [BLOCK_SIZE]
    */
   void flush_to_buffer(u8 *buffer) const {
-    InodeType type = InodeType::FILE;
-    memcpy(buffer, &type, sizeof(type));                         // 4 bytes
-    memcpy(buffer, &this->inner_attr, sizeof(this->inner_attr)); // 32 bytes
-    memcpy(buffer, &this->nblocks, sizeof(this->nblocks));       // 4 bytes
+    constexpr InodeType _type = InodeType::FILE;
+    u8 *buffer_pos = buffer;
+    memcpy(buffer_pos, &_type, sizeof(_type)); // 4 bytes
+    buffer_pos += sizeof(_type);
+    memcpy(buffer_pos, &this->inner_attr, sizeof(this->inner_attr)); // 32 bytes
+    buffer_pos += sizeof(this->inner_attr);
+    memcpy(buffer_pos, &this->nblocks, sizeof(this->nblocks)); // 4 bytes
+    buffer_pos += sizeof(this->nblocks);
+    memcpy(buffer_pos, this->blocks.data(),
+           sizeof(BlockEntity) * this->nblocks);
   }
 };
 

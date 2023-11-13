@@ -13,11 +13,11 @@
 
 #include "common/config.h"
 #include "common/util.h"
+#include "distributed/commit_log.h"
+#include "filesystem/operations.h"
 #include "librpc/client.h"
 #include "librpc/server.h"
 #include "metadata/manager.h"
-#include "filesystem/operations.h"
-#include "distributed/commit_log.h"
 
 namespace chfs {
 
@@ -57,11 +57,17 @@ const u8 DirectoryType = 2;
 
 using BlockInfo = std::tuple<block_id_t, mac_id_t, version_t>;
 
+/**
+ * @brief Central server, storing metadata.
+ *
+ * The metadata server is created with a root directory.
+ */
 class MetadataServer {
   const size_t num_worker_threads = 4; // worker threads for rpc handlers
 public:
   /**
-   * Start a metadata server that listens on `localhost` with the given port.
+   * Start a metadata server that listens on `localhost` with the given
+   * port.
    *
    * It receives requests from client and sometimes send requests to
    * data server for block allocating or deleting.
@@ -164,7 +170,7 @@ public:
    * A RPC handler for client. It returns the type and attribute of a file
    *
    * @param id: The inode id of the file
-   * 
+   *
    * @return: a tuple of <size, atime, mtime, ctime, type>
    */
   auto get_type_attr(inode_id_t id) -> std::tuple<u64, u64, u64, u64, u8>;

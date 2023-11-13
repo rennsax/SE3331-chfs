@@ -11,6 +11,9 @@
 
 #pragma once
 
+#include "common/config.h"
+#include "common/result.h"
+#include "metadata/inode.h"
 #include "metadata/manager.h"
 #include <functional>
 #include <sys/stat.h>
@@ -98,6 +101,16 @@ public:
   auto write_file(inode_id_t, const std::vector<u8> &content) -> ChfsNullResult;
 
   /**
+   * @brief Append an allocated block to the regular inode.
+   *
+   * @param id expected to be a regular inode, otherwise return error.
+   * @param block the block information
+   * @return ChfsNullResult
+   */
+  ChfsNullResult append_block_to_regular_inode(
+      inode_id_t id, const RegularInode::BlockEntity &block);
+
+  /**
    * Write the content to the blocks pointed by the inode
    * If the inode's block is insufficient, we will dynamically allocate more
    * blocks.
@@ -115,6 +128,17 @@ public:
    * @param id the id of the inode
    */
   auto read_file(inode_id_t) -> ChfsResult<std::vector<u8>>;
+
+  /**
+   * @brief Read the blocks of the regular inode. Only for lab2.
+   *
+   * @param id expected to be a regular inode, otherwise, return error.
+   * @return ChfsResult<std::vector<RegularInode::BlockEntity>>
+   *         the block entities of the regular inode, which are used to
+   *         locate blocks on the slave server.
+   */
+  ChfsResult<std::vector<RegularInode::BlockEntity>> read_regular_node(
+      inode_id_t id);
 
   /**
    * Read the content to the blocks pointed by the inode
