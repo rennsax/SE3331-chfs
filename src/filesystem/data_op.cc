@@ -92,7 +92,11 @@ ChfsNullResult FileOperation::append_block_to_regular_inode(
   if (inode_bid_res.is_err()) {
     return inode_bid_res.unwrap_error();
   }
-  RegularInode inode{buffer};
+  auto inode_res = RegularInode::from(buffer);
+  if (inode_res.is_err()) {
+    return inode_res.unwrap_error();
+  }
+  auto inode = inode_res.unwrap();
   inode.blocks.push_back(block);
   inode.inner_attr.mtime = time(NULL);
   inode.nblocks++;
@@ -361,8 +365,11 @@ ChfsResult<std::vector<RegularInode::BlockEntity>> FileOperation::
   if (auto res = this->inode_manager_->read_inode(id, buffer); res.is_err()) {
     return res.unwrap_error();
   }
-  RegularInode inode{buffer};
-  return inode.blocks;
+  auto inode_res = RegularInode::from(buffer);
+  if (inode_res.is_err()) {
+    return inode_res.unwrap_error();
+  }
+  return inode_res.unwrap().blocks;
 }
 
 auto FileOperation::read_file_w_off(inode_id_t id, u64 sz, u64 offset)

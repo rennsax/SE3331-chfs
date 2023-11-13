@@ -319,27 +319,32 @@ struct RegularInode {
   u32 nblocks; // number of <block_id, mac_id> pairs
   std::vector<BlockEntity> blocks;
 
+  explicit RegularInode() = default;
+
   /**
    * @brief Construct a new RegularInode object with raw data
    *
    * @param inode_data the byte stream
    */
-  RegularInode(const std::vector<u8> &inode_data) {
+  static ChfsResult<RegularInode> from(const std::vector<u8> &inode_data) {
+    RegularInode res_inode{};
     const u8 *buffer_pos = inode_data.data();
     InodeType type{};
     memcpy(&type, buffer_pos, sizeof(type));
     buffer_pos += sizeof(InodeType);
 
-    CHFS_VERIFY(type == InodeType::FILE,
-                "cannot read a regular node from an inode from other type");
+    if (type != InodeType::FILE) {
+      return ErrorType::INVALID;
+    }
 
-    memcpy(&this->inner_attr, buffer_pos, sizeof(this->inner_attr));
-    buffer_pos += sizeof(this->inner_attr);
-    memcpy(&this->nblocks, buffer_pos, sizeof(this->nblocks));
-    buffer_pos += sizeof(this->nblocks);
-    blocks.resize(this->nblocks);
-    memcpy(this->blocks.data(), buffer_pos,
-           this->nblocks * sizeof(BlockEntity));
+    memcpy(&res_inode.inner_attr, buffer_pos, sizeof(res_inode.inner_attr));
+    buffer_pos += sizeof(res_inode.inner_attr);
+    memcpy(&res_inode.nblocks, buffer_pos, sizeof(res_inode.nblocks));
+    buffer_pos += sizeof(res_inode.nblocks);
+    res_inode.blocks.resize(res_inode.nblocks);
+    memcpy(res_inode.blocks.data(), buffer_pos,
+           res_inode.nblocks * sizeof(BlockEntity));
+    return res_inode;
   }
 
   RegularInode(InodeType type, usize block_size) : inner_attr{}, nblocks{0} {
