@@ -131,6 +131,11 @@ public:
   }
 
   /**
+   * Gets the port 
+   */
+  unsigned short port() const { return server->port(); }
+
+  /**
    * Stops the server.
    */
   void stop();
