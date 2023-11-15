@@ -184,10 +184,11 @@ auto MetadataServer::lookup(inode_id_t parent, const std::string &name)
 
 // {Your code here}
 auto MetadataServer::get_block_map(inode_id_t id) -> std::vector<BlockInfo> {
-  if (auto type_res = this->operation_->gettype(id);
-      type_res.is_err() || type_res.unwrap() != InodeType::FILE) {
-    return {};
-  }
+#ifndef NDEBUG
+  auto type_res = this->operation_->gettype(id);
+  CHFS_ASSERT(!type_res.is_err() && type_res.unwrap() == InodeType::FILE,
+              "wrong file type");
+#endif
   auto read_res = this->operation_->read_regular_node(id);
   if (read_res.is_err()) {
     return {};

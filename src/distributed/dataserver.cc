@@ -72,13 +72,18 @@ DataServer::~DataServer() {
 // {Your code here}
 auto DataServer::read_data(block_id_t block_id, usize offset, usize len,
                            version_t version) -> std::vector<u8> {
+  // The constraint should be satisfied in the protocol.
+  CHFS_ASSERT(len + offset <= DiskBlockSize,
+              "DataServer::read_data: invalid args");
   if (this->read_version(block_id) != version) {
+    // The version number is stale.
     return {};
   }
   auto bm = this->block_allocator_->bm;
   std::vector<u8> buffer(bm->block_size()), res(len);
   if (auto read_res = bm->read_block(block_id, buffer.data());
       read_res.is_err()) {
+    // The block doesn't exist.
     return {};
   }
   std::memcpy(res.data(), buffer.data() + offset, len);
