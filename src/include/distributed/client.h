@@ -13,6 +13,7 @@
 
 #include "common/config.h"
 #include "common/result.h"
+#include "distributed/metadata_server.h"
 #include "librpc/client.h"
 #include "metadata/inode.h"
 
@@ -148,6 +149,48 @@ private:
   std::shared_ptr<RpcClient>
       metadata_server_; // Currently only one metadata server
   mac_id_t num_data_servers;
+
+  /**
+   * @brief Get the block map from metadata server.
+   *
+   * @param id the inode id. In the protocol, we assume the id must correspond
+   *           to a regular inode.
+   * @return a vector of block information, or an error when RPC timeout.
+   */
+  ChfsResult<std::vector<BlockInfo>> get_block_map_(inode_id_t id);
+  /**
+   * @brief Overload.
+   */
+  ChfsNullResult read_from_data_server_(u8 *target, BlockInfo block_info) const;
+  /**
+   * @brief Utility to read a block from the data server.
+   *
+   * @param target the address to which the data is written.
+   * @param block_info consists of block id, mac id and version id, which are
+   *                   to locate the block.
+   * @return Error when the read fails.
+   */
+  ChfsNullResult read_from_data_server_(u8 *target, BlockInfo block_info,
+                                        usize offset, usize len) const;
+
+  /**
+   * @brief Overload.
+   *
+   */
+  ChfsResult<bool> write_to_data_server_(mac_id_t mid, block_id_t bid,
+                                         const std::vector<u8> &data);
+  /**
+   * @brief Utility to write some data to the block on the data server.
+   *
+   * @param mid mac id
+   * @param bid block id
+   * @param offset where to begin the write
+   * @param data the data to write. data.size() denotes how many bytes to write.
+   * @return true on write ok. Error on RPC timeout.
+   */
+  ChfsResult<bool> write_to_data_server_(mac_id_t mid, block_id_t bid,
+                                         usize offset,
+                                         const std::vector<u8> &data);
 };
 
 } // namespace chfs
