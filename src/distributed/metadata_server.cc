@@ -215,6 +215,7 @@ auto MetadataServer::get_block_map(inode_id_t id) -> std::vector<BlockInfo> {
 // {Your code here}
 auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   // Check if the inode is a regular inode. If not, return error.
+  std::unique_lock<std::mutex> lock_inode{this->im_mtx};
   if (auto type_res = this->operation_->gettype(id);
       type_res.is_err() || type_res.unwrap() != InodeType::FILE) {
     return {};
@@ -227,6 +228,8 @@ auto MetadataServer::allocate_block(inode_id_t id) -> BlockInfo {
   }
   auto [bid, vid] =
       alloc_response.unwrap()->as<std::pair<block_id_t, version_t>>();
+  std::unique_lock<std::mutex> lock_ba{this->ba_mtx};
+  std::unique_lock<std::mutex> lock_bm{this->bm_mtx};
   this->operation_->append_block_to_regular_inode(id, {bid, vid, slave_id});
   return {bid, slave_id, vid};
 }
@@ -239,6 +242,9 @@ auto MetadataServer::free_block(inode_id_t id, block_id_t block_id,
     return entity.bid == block_id && entity.mid == machine_id;
   };
 
+  std::unique_lock<std::mutex> lock_inode{this->im_mtx};
+  std::unique_lock<std::mutex> lock_ba{this->ba_mtx};
+  std::unique_lock<std::mutex> lock_bm{this->bm_mtx};
   auto rm_res =
       this->operation_->delete_block_from_regular_inode(id, rm_callback);
 
