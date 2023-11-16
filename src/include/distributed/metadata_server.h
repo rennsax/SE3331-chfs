@@ -18,6 +18,7 @@
 #include "librpc/client.h"
 #include "librpc/server.h"
 #include "metadata/manager.h"
+#include <mutex>
 
 namespace chfs {
 
@@ -253,6 +254,7 @@ private:
   /**
    * {You can add anything you want here}
    */
+  std::mutex bm_mtx{}, im_mtx{}, ba_mtx{};
 };
 
 } // namespace chfs

@@ -132,6 +132,9 @@ auto MetadataServer::mknode(u8 type, inode_id_t parent, const std::string &name)
       return InodeType::Unknown;
     }
   };
+  std::unique_lock<std::mutex> lock_inode{im_mtx};
+  std::unique_lock<std::mutex> lock_ba{ba_mtx};
+  std::unique_lock<std::mutex> lock_bm{bm_mtx};
   auto mk_res = this->operation_->mk_helper_metadata_server(
       parent, name.c_str(), inode_type_cast(type));
   if (mk_res.is_err()) {
@@ -144,6 +147,7 @@ auto MetadataServer::mknode(u8 type, inode_id_t parent, const std::string &name)
 auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
     -> bool {
 
+  std::unique_lock<std::mutex> lock_inode{im_mtx};
   auto to_unlink = this->lookup(parent, name);
   if (to_unlink == 0) {
     return false;
@@ -154,6 +158,8 @@ auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
     return false;
   }
   auto inode_type = type_res.unwrap();
+  std::unique_lock<std::mutex> lock_ba{ba_mtx};
+  std::unique_lock<std::mutex> lock_bm{bm_mtx};
   if (inode_type == InodeType::Directory) {
     auto dir_entities = this->readdir(to_unlink);
     if (!dir_entities.empty()) {
