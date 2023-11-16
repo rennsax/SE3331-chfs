@@ -251,4 +251,33 @@ auto FileOperation::unlink(inode_id_t parent, const char *name)
   return KNullOk;
 }
 
+ChfsNullResult FileOperation::unlink_regular_file(inode_id_t parent,
+                                                  const char *name) {
+  const auto lookup_res = this->lookup(parent, name);
+  if (lookup_res.is_err()) {
+    return ErrorType::NotExist;
+  }
+  auto inode_id = lookup_res.unwrap();
+  auto read_res = read_raw_content(this, parent);
+  if (read_res.is_err()) {
+    return read_res.unwrap_error();
+  }
+  auto dir_content = read_res.unwrap();
+  auto dir_content_new = rm_from_directory(dir_content, name);
+  if (auto res = write_raw_content(this, parent, dir_content_new);
+      res.is_err()) {
+    return res.unwrap_error();
+  }
+  // Free the inode and its block.
+  std::vector<u8> inode_buffer(DiskBlockSize);
+  auto bid_res = this->inode_manager_->read_inode(inode_id, inode_buffer);
+  if (bid_res.is_err()) {
+    return bid_res.unwrap_error();
+  }
+  this->inode_manager_->free_inode(inode_id);
+  this->block_allocator_->deallocate(bid_res.unwrap());
+
+  return KNullOk;
+}
+
 } // namespace chfs

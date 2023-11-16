@@ -201,6 +201,18 @@ public:
                                  InodeType type) -> ChfsResult<inode_id_t>;
 
   /**
+   * @brief Helper function to create directory or file.
+   *        Satisfy before-or-after atomicity.
+   *
+   * @param parent the id of the parent
+   * @param name the name of the directory or file.
+   * @return inode id
+   */
+  ChfsResult<inode_id_t> tx_mk_helper_metadata_server(inode_id_t parent,
+                                                      char const *name,
+                                                      InodeType);
+
+  /**
    * Create a directory at the parent
    *
    * @param parent the id of the parent
@@ -235,6 +247,15 @@ public:
    * @return  ENOTEMPTY if the deleted file is a directory
    */
   auto unlink(inode_id_t parent, const char *name) -> ChfsNullResult;
+
+  /**
+   * @brief Remove the regular file from the directory,
+   *        and free the inode.
+   *
+   * @param parent
+   * @param name
+   */
+  ChfsNullResult unlink_regular_file(inode_id_t parent, const char *name);
 
 protected:
   auto mk_helper_handler(inode_id_t parent, const char *name,

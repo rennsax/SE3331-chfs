@@ -165,8 +165,11 @@ auto MetadataServer::unlink(inode_id_t parent, const std::string &name)
       return false;
     }
   } else if (inode_type == InodeType::FILE) {
-    // TODO: Implement this function.
-    UNIMPLEMENTED();
+    if (auto rm_res =
+            this->operation_->unlink_regular_file(parent, name.c_str());
+        rm_res.is_err()) {
+      return false;
+    }
   } else {
     return false;
   }
