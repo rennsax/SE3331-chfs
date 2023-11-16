@@ -38,13 +38,7 @@ ChfsResult<inode_id_t> FileOperation::alloc_metadata_server_inode(
   if (type == InodeType::FILE) {
     return this->inode_manager_->allocate_regular_inode(block_id);
   }
-
-  auto res = this->inode_manager_->allocate_inode(type, block_id);
-  if (res.is_err()) {
-    return res.unwrap_error();
-  }
-
-  return res.unwrap();
+  return this->inode_manager_->allocate_inode(type, block_id);
 }
 
 auto FileOperation::getattr(inode_id_t id) -> ChfsResult<FileAttr> {
