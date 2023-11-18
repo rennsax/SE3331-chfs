@@ -116,7 +116,11 @@ auto BlockAllocator::allocate() -> ChfsResult<block_id_t> {
       // 1. Set the free bit we found to 1 in the bitmap.
       map_util.set(res.value());
       // 2. Flush the changed bitmap block back to the block manager.
-      this->bm->write_block(i + this->bitmap_block_id, buffer.data());
+      auto write_res =
+          this->bm->write_block(i + this->bitmap_block_id, buffer.data());
+      if (write_res.is_err()) {
+        return write_res.unwrap_error();
+      }
       // 3. Calculate the value of `retval`.
       // The block id of the allocated block.
       block_id_t retval = static_cast<block_id_t>(
