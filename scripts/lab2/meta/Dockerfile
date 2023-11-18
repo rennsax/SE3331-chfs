@@ -2,6 +2,7 @@ FROM ubuntu:22.04
 
 # Install Ubuntu packages
 ARG DEBIAN_FRONTEND=noninteractive
+RUN sed -i 's/ports.ubuntu.com/mirror.sjtu.edu.cn/g' /etc/apt/sources.list
 RUN apt-get -y update && \
     apt-get -y install \
       build-essential \

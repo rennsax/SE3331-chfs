@@ -2,9 +2,7 @@ version: '3'
 
 services:
   fs_client:
-    build:
-      context: ../.. # Set current context to the root path.
-      dockerfile: scripts/lab2/fs_client/Dockerfile
+    image: chfs/fs_client
     privileged: true
     depends_on:
       - meta
@@ -14,9 +12,7 @@ services:
       - ../../build/bin/fs_client:/home/stu/fs_client
 
   meta:
-    build:
-      context: ../.. # Set current context to the root path.
-      dockerfile: scripts/lab2/meta/Dockerfile
+    image: chfs/meta
     depends_on:
       - data
     ports:
@@ -26,9 +22,7 @@ services:
       - ../../build/bin/meta:/home/bin/meta
 
   data:
-    build:
-      context: ../.. # Set current context to the root path.
-      dockerfile: scripts/lab2/data/Dockerfile
+    image: chfs/data
     ports:
       - 8081:8081
       - 8082:8082
