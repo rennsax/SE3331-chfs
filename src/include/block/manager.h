@@ -30,7 +30,7 @@ class BlockManager {
   friend class BlockIterator;
 
 protected:
-  const usize block_sz = 4096;
+  const usize block_sz = DiskBlockSize;
 
   std::string file_name_;
   int fd;
@@ -39,6 +39,7 @@ protected:
   bool in_memory; // whether we use in-memory to emulate the block manager
   bool maybe_failed;
   usize write_fail_cnt;
+  bool is_log_enabled;
 
 public:
   /**
@@ -148,6 +149,24 @@ public:
   auto set_may_fail(bool may_fail) -> void {
     this->maybe_failed = may_fail;
   }
+
+  /**
+   * @brief Write all the data contiguously. Only for redo-log.
+   *
+   * @param data the data to write into log blocks.
+   */
+  std::pair<block_id_t, usize> contiguous_write_(block_id_t block_id,
+                                                 usize offset,
+                                                 const std::vector<u8> &data);
+  /**
+   * @brief Read some bytes contiguously. Only for redo-log.
+   *
+   * @param block_id
+   * @param offset
+   * @param len
+   * @return std::vector<u8>
+   */
+  std::vector<u8> contiguous_read_(usize offset, usize len) const;
 };
 
 /**

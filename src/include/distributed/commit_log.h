@@ -46,6 +46,11 @@ public:
  * is crashed.
  */
 class CommitLog {
+  struct LogEntry {
+    txn_id_t tid;
+    std::vector<BlockOperation> ops;
+  };
+
 public:
   explicit CommitLog(std::shared_ptr<BlockManager> bm,
                      bool is_checkpoint_enabled);
@@ -57,11 +62,15 @@ public:
   auto recover() -> void;
   auto get_log_entry_num() -> usize;
 
+private:
   bool is_checkpoint_enabled_;
   std::shared_ptr<BlockManager> bm_;
   /**
    * {Append anything if you need}
    */
+  usize cur_block_;
+  usize cur_offset_;
+  std::vector<LogEntry> parse_log_() const;
 };
 
 } // namespace chfs
