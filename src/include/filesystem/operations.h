@@ -257,11 +257,6 @@ public:
    */
   ChfsNullResult unlink_regular_file(inode_id_t parent, const char *name);
 
-protected:
-  auto mk_helper_handler(inode_id_t parent, const char *name,
-                         std::function<ChfsResult<inode_id_t>()> alloc_node)
-      -> ChfsResult<inode_id_t>;
-
   /**
    * @brief Get the regular inode object. Only for lab2.
    *
@@ -269,6 +264,11 @@ protected:
    * @return error if the inode isn't regular inode.
    */
   ChfsResult<std::pair<block_id_t, RegularInode>> get_regular_inode(inode_id_t);
+
+protected:
+  auto mk_helper_handler(inode_id_t parent, const char *name,
+                         std::function<ChfsResult<inode_id_t>()> alloc_node)
+      -> ChfsResult<inode_id_t>;
 
 private:
   FileOperation(std::shared_ptr<BlockManager> bm,

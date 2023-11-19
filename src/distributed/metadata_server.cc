@@ -307,8 +307,21 @@ auto MetadataServer::get_type_attr(inode_id_t id)
     return {};
   }
   auto [inode_type, attr] = res.unwrap();
-  return std::make_tuple(attr.size, attr.atime, attr.mtime, attr.ctime,
-                         inode_type_cast(inode_type));
+  if (inode_type == InodeType::Directory) {
+    return std::make_tuple(attr.size, attr.atime, attr.mtime, attr.ctime,
+                           inode_type_cast(inode_type));
+  } else if (inode_type == InodeType::FILE) {
+    auto regular_file_inode_res = this->operation_->get_regular_inode(id);
+    if (regular_file_inode_res.is_err()) {
+      return {};
+    }
+    auto regular_inode = regular_file_inode_res.unwrap().second;
+    auto attr = regular_inode.inner_attr;
+    u64 real_size = regular_inode.nblocks * DiskBlockSize;
+    return std::make_tuple(real_size, attr.atime, attr.mtime, attr.ctime,
+                           inode_type_cast(inode_type));
+  }
+  return {};
 }
 
 auto MetadataServer::reg_server(const std::string &address, u16 port,

@@ -61,7 +61,7 @@ auto ChfsClient::lookup(inode_id_t parent, const std::string &name)
   }
   auto inode_id = res.unwrap()->as<inode_id_t>();
   if (inode_id == 0) {
-    return ErrorType::INVALID;
+    return ErrorType::NotExist;
   }
   return inode_id;
 }
@@ -135,7 +135,7 @@ auto ChfsClient::read_file(inode_id_t id, usize offset, usize size)
     return buffer;
   }
   // Read more than one block
-  usize last_block = (offset + size) / DiskBlockSize;
+  usize last_block = (offset + size - 1) / DiskBlockSize;
   usize last_offset = (offset + size) % DiskBlockSize;
 
   // Read the first block
