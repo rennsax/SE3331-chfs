@@ -28,6 +28,15 @@ CommitLog::CommitLog(std::shared_ptr<BlockManager> bm,
                                std::vector<u8>(sizeof(txn_id_t), 0));
 }
 
+CommitLog::CommitLog(std::shared_ptr<BlockManager> bm,
+                     bool is_checkpoint_enabled, MetadataServer *server)
+    : is_checkpoint_enabled_(is_checkpoint_enabled), bm_(bm),
+      cur_block_(KDefaultBlockCnt - KLogBlockCnt), cur_offset_(0),
+      server_(server) {
+  this->bm_->contiguous_write_(cur_block_, cur_block_,
+                               std::vector<u8>(sizeof(txn_id_t), 0));
+}
+
 CommitLog::~CommitLog() {
 }
 
@@ -112,6 +121,7 @@ auto CommitLog::recover() -> void {
       this->bm_->write_block(op.block_id_, op.new_block_state_.data());
     }
   }
+  // this->server_->mknode(DirectoryType, 1, "dir");
 }
 
 }; // namespace chfs

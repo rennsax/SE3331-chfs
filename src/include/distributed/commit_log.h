@@ -39,6 +39,7 @@ public:
   block_id_t block_id_;
   std::vector<u8> new_block_state_;
 };
+class MetadataServer;
 
 /**
  * `CommitLog` is a class that records the block edits into the
@@ -54,6 +55,8 @@ class CommitLog {
 public:
   explicit CommitLog(std::shared_ptr<BlockManager> bm,
                      bool is_checkpoint_enabled);
+  explicit CommitLog(std::shared_ptr<BlockManager> bm,
+                     bool is_checkpoint_enabled, MetadataServer *);
   ~CommitLog();
   auto append_log(txn_id_t txn_id,
                   std::vector<std::shared_ptr<BlockOperation>> ops) -> void;
@@ -71,6 +74,7 @@ private:
   usize cur_block_;
   usize cur_offset_;
   std::vector<LogEntry> parse_log_() const;
+  [[maybe_unused]] MetadataServer *server_;
 };
 
 } // namespace chfs

@@ -101,7 +101,7 @@ MetadataServer::MetadataServer(u16 port, const std::string &data_path,
   init_fs(data_path);
   if (is_log_enabled_) {
     commit_log = std::make_shared<CommitLog>(operation_->block_manager_,
-                                             is_checkpoint_enabled);
+                                             is_checkpoint_enabled, this);
   }
 }
 
@@ -115,7 +115,7 @@ MetadataServer::MetadataServer(std::string const &address, u16 port,
   init_fs(data_path);
   if (is_log_enabled_) {
     commit_log = std::make_shared<CommitLog>(operation_->block_manager_,
-                                             is_checkpoint_enabled);
+                                             is_checkpoint_enabled, this);
   }
 }
 
