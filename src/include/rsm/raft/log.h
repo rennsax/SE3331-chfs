@@ -1,19 +1,18 @@
 #pragma once
 
-#include "common/macros.h"
 #include "block/manager.h"
-#include <mutex>
-#include <vector>
+#include "common/macros.h"
 #include <cstring>
 #include <memory>
+#include <mutex>
+#include <vector>
 
 namespace chfs {
 
-/** 
+/**
  * RaftLog uses a BlockManager to manage the data..
  */
-template <typename Command>
-class RaftLog {
+template <typename Command> class RaftLog {
 public:
     RaftLog(std::shared_ptr<BlockManager> bm);
     ~RaftLog();
@@ -24,18 +23,14 @@ private:
     std::shared_ptr<BlockManager> bm_;
     std::mutex mtx;
     /* Lab3: Your code here */
-
 };
 
 template <typename Command>
-RaftLog<Command>::RaftLog(std::shared_ptr<BlockManager> bm)
-{
+RaftLog<Command>::RaftLog(std::shared_ptr<BlockManager> bm) {
     /* Lab3: Your code here */
 }
 
-template <typename Command>
-RaftLog<Command>::~RaftLog()
-{
+template <typename Command> RaftLog<Command>::~RaftLog() {
     /* Lab3: Your code here */
 }
 
