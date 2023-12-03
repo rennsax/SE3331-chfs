@@ -5,6 +5,7 @@
 #include <mutex>
 #include <vector>
 #include <cstring>
+#include <memory>
 
 namespace chfs {
 
