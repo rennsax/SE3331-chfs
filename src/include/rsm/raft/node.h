@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <stdarg.h>
 #include <thread>
 #include <unistd.h>
@@ -17,6 +18,7 @@
 #include "rsm/raft/log.h"
 #include "rsm/raft/protocol.h"
 #include "rsm/state_machine.h"
+#include "type_config.h"
 #include "utils/thread_pool.h"
 
 namespace chfs {
@@ -28,7 +30,7 @@ enum class RaftRole {
 };
 
 struct RaftNodeConfig {
-    int node_id;
+    RaftNodeId node_id;
     uint16_t port;
     std::string ip_address;
 };
@@ -136,14 +138,19 @@ private:
     std::map<int, std::unique_ptr<RpcClient>>
         rpc_clients_map; /* RPC clients of all raft nodes including this node.
                           */
-    std::vector<RaftNodeConfig> node_configs; /* Configuration for all nodes */
-    int my_id; /* The index of this node in rpc_clients, start from 0. */
+
+    /**
+     * @brief Configuration for all nodes.
+     *
+     * We can get the total number of nodes in the cluster with this member.
+     */
+    std::vector<RaftNodeConfig> node_configs; /*  */
+    RaftNodeId my_id; /* The index of this node in rpc_clients, start from 0. */
 
     std::atomic_bool stopped;
 
     RaftRole role;
-    int current_term;
-    int leader_id;
+    RaftNodeId leader_id;
 
     std::unique_ptr<std::thread> background_election;
     std::unique_ptr<std::thread> background_ping;
@@ -151,13 +158,53 @@ private:
     std::unique_ptr<std::thread> background_apply;
 
     /* Lab3: Your code here */
+    const RaftNodeId majority_cnt;
+
+    // Persistent state on all servers
+    RaftTermNumber current_term = 0;
+    RaftNodeId voted_for = KRaftNilNodeId;
+    std::vector<RaftLogEntry<Command>> log{};
+
+    // Volatile state on all servers
+    RaftLogIndex commit_index = 0, last_applied = 0;
+
+    // Volatile state on leaders
+    /// Both of the two lists are of size @c node_configs.size()
+    std::unique_ptr<std::vector<RaftLogIndex>> next_index{}, match_index{};
+
+    // Volatile state on candidates
+    std::set<RaftNodeId> granted_from{};
+
+    /**
+     * @brief Handle discover new term in the cluster.
+     *
+     * We then convert the role to follower, update the term number, make
+     * votedFor @c nil.
+     *
+     * A new term can be discovered either from a candidate or the leader.
+     * If it's from a candidate, the @c nil votedFor is possibly transient,
+     * since it may soon vote for the candidate (but it may also denies);
+     * If it's from the leader (AppendEntries RPC), votedFor may maintain as @c
+     * nil for some time (at least the whole term).
+     *
+     * @attention Not thread-safe.
+     *
+     * @param newTerm The new term discovered from other servers.
+     */
+    void increase_term_(RaftTermNumber newTerm) noexcept {
+        this->role = RaftRole::Follower;
+        this->current_term = newTerm;
+        this->voted_for = KRaftNilNodeId;
+    }
 };
 
 template <typename StateMachine, typename Command>
 RaftNode<StateMachine, Command>::RaftNode(int node_id,
                                           std::vector<RaftNodeConfig> configs)
     : network_stat(true), node_configs(configs), my_id(node_id), stopped(true),
-      role(RaftRole::Follower), current_term(0), leader_id(-1) {
+      role(RaftRole::Follower), leader_id(KRaftNilNodeId),
+      majority_cnt(static_cast<RaftNodeId>(configs.size()) / 2 + 1),
+      current_term(0) {
     auto my_config = node_configs[my_id];
 
     /* launch RPC server */
@@ -274,14 +321,87 @@ auto RaftNode<StateMachine, Command>::get_snapshot() -> std::vector<u8> {
 template <typename StateMachine, typename Command>
 auto RaftNode<StateMachine, Command>::request_vote(RequestVoteArgs args)
     -> RequestVoteReply {
-    /* Lab3: Your code here */
-    return RequestVoteReply();
+
+    auto produce_reply =
+        [this, cand_id = args.candidate_id](bool voted) -> RequestVoteReply {
+        if (voted) {
+            this->voted_for = cand_id;
+        }
+        return {this->current_term, voted};
+    };
+
+    RaftProducer<RequestVoteReply, decltype(produce_reply)> reply_producer{
+        this->mtx,
+        std::move(produce_reply),
+        {/* TODO cleanup */},
+    };
+
+    if (args.term < this->current_term) {
+        // Find stale term number, immediately reject.
+        return reply_producer.get(false);
+
+    } else if (args.term > this->current_term) {
+        // Update the term number (logical clock).
+        this->increase_term_(args.term);
+    }
+
+    assert(this->current_term >= args.term);
+
+    // The voter promises to not vote for different candidates in one term.
+    if (this->voted_for != KRaftNilNodeId &&
+        this->voted_for != args.candidate_id) {
+        return reply_producer.get(false);
+    }
+
+    // Check the candidate is "up-to-date" from the voter's aspect.
+
+    if (this->log.empty()) {
+        return reply_producer.get(true);
+    }
+
+    if (auto my_last_log_term = this->log.back().received_term;
+
+        my_last_log_term < args.last_log_term ||
+        (my_last_log_term == args.last_log_term &&
+         this->log.size() <= args.last_log_index)) {
+
+        return reply_producer.get(true);
+    }
+
+    return reply_producer.get(false);
 }
 
 template <typename StateMachine, typename Command>
 void RaftNode<StateMachine, Command>::handle_request_vote_reply(
-    int target, const RequestVoteArgs arg, const RequestVoteReply reply) {
-    /* Lab3: Your code here */
+    RaftNodeId target, const RequestVoteArgs arg,
+    const RequestVoteReply reply) {
+
+    RaftRAII lock{
+        this->mtx,
+        {/* TODO cleanup */},
+    };
+
+    // Discover new term: give up the election.
+    if (this->current_term < reply.term) {
+        this->increase_term_(reply.term);
+        // Fall to a follower.
+        this->role = RaftRole::Follower;
+        return;
+    }
+
+    // The candidate may have already fallen to a follower.
+    if (this->role != RaftRole::Candidate) {
+        return;
+    }
+
+    if (reply.vote_granted) {
+        this->granted_from.insert(target);
+        if (this->granted_from.size() >= this->majority_cnt) {
+        }
+    } else {
+        this->granted_from.erase(target); // maybe here
+    }
+
     return;
 }
 
