@@ -150,21 +150,12 @@ auto ChfsClient::read_file(inode_id_t id, usize offset, usize size)
   }
 
   // Read full blocks
-  for (usize i = first_block + 1; i < last_block; ++i) {
+  for (usize i = first_block + 1; i <= last_block; ++i) {
     auto read_res = this->read_from_data_server_(cur_pos, blocks_map.at(i));
     if (read_res.is_err()) {
       return read_res.unwrap_error();
     }
     cur_pos += DiskBlockSize;
-  }
-  // Read the final block
-  {
-    auto read_res = this->read_from_data_server_(
-        cur_pos, blocks_map.at(last_block), 0, last_offset);
-    if (read_res.is_err()) {
-      return read_res.unwrap_error();
-    }
-    // cur_pos += last_offset;
   }
   CHFS_VERIFY(cur_pos + last_offset - buffer.data(), buffer.size());
 
