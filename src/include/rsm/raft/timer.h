@@ -60,12 +60,7 @@ static int generate_random_timeout_number(int least, int max) noexcept {
 
 std::unique_ptr<Timer> make_election_timer() noexcept {
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
-    return std::make_unique<Timer>(generate_random_timeout_number(300, 500));
-}
-
-std::unique_ptr<Timer> make_heartbeat_timer() noexcept {
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
-    return std::make_unique<Timer>(generate_random_timeout_number(50, 100));
+    return std::make_unique<Timer>(generate_random_timeout_number(300, 1000));
 }
 
 } // namespace chfs

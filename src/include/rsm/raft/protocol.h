@@ -78,8 +78,6 @@ template <typename Command> struct AppendEntriesArgs {
     RaftTermNumber prev_log_term;
     std::vector<RaftLogEntry<Command>> entries;
     RaftLogIndex leader_commit;
-
-    MSGPACK_DEFINE(term, leader_id, prev_log_index, prev_log_term, entries);
 };
 
 struct RpcAppendEntriesArgs {
@@ -91,8 +89,12 @@ struct RpcAppendEntriesArgs {
     std::vector<u8> entries;
     RaftLogIndex leader_commit;
 
-    MSGPACK_DEFINE(term, leader_id, prev_log_index, prev_log_term, entries);
+    MSGPACK_DEFINE(term, leader_id, prev_log_index, prev_log_term, entries,
+                   leader_commit);
 };
+template <typename Command>
+AppendEntriesArgs<Command> transform_rpc_append_entries_args(
+    const RpcAppendEntriesArgs &rpc_arg);
 
 template <typename Command>
 RpcAppendEntriesArgs transform_append_entries_args(
@@ -110,9 +112,15 @@ RpcAppendEntriesArgs transform_append_entries_args(
         }
     }
 
-    return RpcAppendEntriesArgs{arg.term,           arg.leader_id,
-                                arg.prev_log_index, arg.prev_log_term,
-                                marshalled,         arg.leader_commit};
+    auto res = RpcAppendEntriesArgs{arg.term,           arg.leader_id,
+                                    arg.prev_log_index, arg.prev_log_term,
+                                    marshalled,         arg.leader_commit};
+    auto original = transform_rpc_append_entries_args<Command>(res);
+    assert(original.term == arg.term && original.leader_id == arg.leader_id &&
+           original.prev_log_index == arg.prev_log_index &&
+           original.prev_log_term == arg.prev_log_term &&
+           original.leader_commit == arg.leader_commit);
+    return res;
 }
 
 template <typename Command>
@@ -123,13 +131,14 @@ AppendEntriesArgs<Command> transform_rpc_append_entries_args(
     std::vector<RaftLogEntry<Command>> entries{};
 
     if (!marshalled.empty()) {
-        auto entries_cnt = marshalled.size() / sizeof(RaftLogEntry<Command>);
+        const auto entry_size = RaftLogEntry<Command>{}.size();
+        auto entries_cnt = marshalled.size() / entry_size;
         entries.reserve(entries_cnt);
-        for (auto i = 0; i < entries_cnt; i += sizeof(RaftLogEntry<Command>)) {
+        for (auto i = 0; i < entries_cnt; i++) {
+            auto begin_it = begin(marshalled) + i * entry_size;
+            auto end_it = begin_it + entry_size;
             auto entry = RaftLogEntry<Command>{};
-            entry.deserialize(std::vector<u8>{
-                begin(marshalled) + i,
-                begin(marshalled) + i + sizeof(RaftLogEntry<Command>)});
+            entry.deserialize(std::vector<u8>(begin_it, end_it));
             entries.push_back(entry);
         }
     }
