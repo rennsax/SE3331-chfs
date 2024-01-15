@@ -11,27 +11,33 @@ using RaftTermNumber = uint32_t;
 using RaftLogIndex = uint32_t;
 
 constexpr RaftNodeId KRaftNilNodeId = -1;
+constexpr RaftLogIndex KRaftDefaultLogIndex = 0;
 
-struct RaftRAII {
+constexpr std::chrono::milliseconds KRaftThreadSleepingSlice{50};
+constexpr std::chrono::milliseconds KRaftHeartBeatInterval{50};
+
+struct [[deprecated]] RaftRAII {
 
     RaftRAII(std::mutex &mtx, std::function<void()> cleanup)
         : lock(mtx), cleanup(std::move(cleanup)) {
     }
 
     ~RaftRAII() {
-        std::invoke(cleanup);
+        if (cleanup) {
+            std::invoke(cleanup);
+        }
     }
 
     RaftRAII(const RaftRAII &) = delete;
     RaftRAII &operator=(const RaftRAII &) = delete;
 
 private:
-    std::unique_lock<std::mutex> lock;
+    std::lock_guard<std::mutex> lock;
     std::function<void()> cleanup;
 };
 
 template <typename _Product, typename _Supplier>
-struct RaftProducer : RaftRAII {
+struct [[deprecated]] RaftProducer : RaftRAII {
 
     using produce_type = _Product;
     using supplier_type = _Supplier;

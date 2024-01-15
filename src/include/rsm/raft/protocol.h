@@ -36,10 +36,38 @@ struct RequestVoteReply {
 
 template <typename _Command> struct RaftLogEntry {
     using StateMachineCommand = _Command;
-    RaftTermNumber received_term;
+    RaftTermNumber term;
     StateMachineCommand command;
 
-    MSGPACK_DEFINE(received_term, command);
+    std::size_t size() const noexcept {
+        return command.size() + sizeof(RaftTermNumber);
+    }
+
+    std::vector<u8> serialize() const noexcept {
+        std::vector<u8> buf{};
+        buf.reserve(size());
+        buf.push_back((term >> 24) & 0xff);
+        buf.push_back((term >> 16) & 0xff);
+        buf.push_back((term >> 8) & 0xff);
+        buf.push_back(term & 0xff);
+        auto command_buf = command.serialize(command.size());
+        buf.insert(end(buf), begin(command_buf), end(command_buf));
+
+        return buf;
+    }
+
+    void deserialize(const std::vector<u8> &data) {
+        assert(data.size() == size());
+        term = (data[0] & 0xff) << 24;
+        term |= (data[1] & 0xff) << 16;
+        term |= (data[2] & 0xff) << 8;
+        term |= data[3] & 0xff;
+        auto command_buf =
+            std::vector<u8>(begin(data) + sizeof(RaftTermNumber), end(data));
+        command.deserialize(command_buf, command_buf.size());
+    }
+
+    MSGPACK_DEFINE(term, command);
 };
 
 template <typename Command> struct AppendEntriesArgs {
@@ -49,37 +77,73 @@ template <typename Command> struct AppendEntriesArgs {
 
     RaftTermNumber prev_log_term;
     std::vector<RaftLogEntry<Command>> entries;
+    RaftLogIndex leader_commit;
 
     MSGPACK_DEFINE(term, leader_id, prev_log_index, prev_log_term, entries);
 };
 
 struct RpcAppendEntriesArgs {
     RaftTermNumber term;
-    bool success;
+    RaftNodeId leader_id;
+    RaftLogIndex prev_log_index;
 
-    MSGPACK_DEFINE(term, success);
+    RaftTermNumber prev_log_term;
+    std::vector<u8> entries;
+    RaftLogIndex leader_commit;
+
+    MSGPACK_DEFINE(term, leader_id, prev_log_index, prev_log_term, entries);
 };
 
 template <typename Command>
 RpcAppendEntriesArgs transform_append_entries_args(
     const AppendEntriesArgs<Command> &arg) {
-    /* Lab3: Your code here */
-    return RpcAppendEntriesArgs();
+    std::vector<RaftLogEntry<Command>> original_entries = arg.entries;
+    auto marshalled = std::vector<u8>{};
+    if (!original_entries.empty()) {
+        marshalled.reserve(original_entries.size() *
+                           original_entries.at(0).size());
+
+        for (const auto &entry : original_entries) {
+            auto serialized = entry.serialize();
+            marshalled.insert(end(marshalled), begin(serialized),
+                              end(serialized));
+        }
+    }
+
+    return RpcAppendEntriesArgs{arg.term,           arg.leader_id,
+                                arg.prev_log_index, arg.prev_log_term,
+                                marshalled,         arg.leader_commit};
 }
 
 template <typename Command>
 AppendEntriesArgs<Command> transform_rpc_append_entries_args(
     const RpcAppendEntriesArgs &rpc_arg) {
-    /* Lab3: Your code here */
-    return AppendEntriesArgs<Command>();
+
+    auto marshalled = rpc_arg.entries;
+    std::vector<RaftLogEntry<Command>> entries{};
+
+    if (!marshalled.empty()) {
+        entries.reserve(marshalled.size() / sizeof(RaftLogEntry<Command>));
+        for (auto i = 0; i < marshalled.size();
+             i += sizeof(RaftLogEntry<Command>)) {
+            auto entry = RaftLogEntry<Command>{};
+            entry.deserialize(std::vector<u8>{
+                begin(marshalled) + i,
+                begin(marshalled) + i + sizeof(RaftLogEntry<Command>)});
+            entries.push_back(entry);
+        }
+    }
+
+    return AppendEntriesArgs<Command>{
+        rpc_arg.term,          rpc_arg.leader_id, rpc_arg.prev_log_index,
+        rpc_arg.prev_log_term, entries,           rpc_arg.leader_commit};
 }
 
 struct AppendEntriesReply {
-    /* Lab3: Your code here */
+    RaftTermNumber term;
+    bool success; // Whether there is log inconsistency
 
-    MSGPACK_DEFINE(
-
-    )
+    MSGPACK_DEFINE(term, success);
 };
 
 struct InstallSnapshotArgs {
