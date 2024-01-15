@@ -12,9 +12,10 @@ using RaftLogIndex = uint32_t;
 
 constexpr RaftNodeId KRaftNilNodeId = -1;
 constexpr RaftLogIndex KRaftDefaultLogIndex = 0;
+constexpr RaftLogIndex KRaftFallbackTermNumber = 0;
 
-constexpr std::chrono::milliseconds KRaftThreadSleepingSlice{50};
-constexpr std::chrono::milliseconds KRaftHeartBeatInterval{50};
+constexpr std::chrono::milliseconds KRaftThreadSleepingSlice{30};
+constexpr std::chrono::milliseconds KRaftHeartbeatInterval{50};
 
 struct [[deprecated]] RaftRAII {
 

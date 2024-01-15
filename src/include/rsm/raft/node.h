@@ -163,7 +163,7 @@ private:
     const RaftNodeId majority_cnt;
 
     // Persistent state on all servers
-    RaftTermNumber current_term = 0;
+    RaftTermNumber current_term = KRaftFallbackTermNumber;
     RaftNodeId voted_for = KRaftNilNodeId;
     /**
      * Log entries start from index 1.
@@ -182,6 +182,8 @@ private:
     RaftNodeId vote_granted_cnt = 0;
 
     std::unique_ptr<Timer> election_timer{};
+
+    std::condition_variable state_cv{};
 
     /**
      * @brief Handle discover new term in the cluster.
@@ -314,12 +316,20 @@ private:
         }
     }
 
+    /**
+     * Leader propagate log entries to followers.
+     * Therefore, `entries` in the args should be non-empty.
+     * For heartbeat, see #do_broadcast_heartbeat.
+     *
+     */
     void do_send_append_entries_rpc(RaftNodeId follower_id) {
         assert(follower_id != my_id);
         assert(this->role == RaftRole::Leader);
         auto prev_log_index = next_index->at(follower_id) - 1;
         auto prev_log_term = get_log_entry(prev_log_index)->term;
         auto maybe_entry = get_log_entry(prev_log_index + 1);
+        // If this function is called, we have
+        // get_last_log_index() > prev_log_index.
         assert(maybe_entry.has_value());
         thread_pool->enqueue(
             &RaftNode<StateMachine, Command>::send_append_entries, this,
@@ -342,13 +352,70 @@ private:
             RequestVoteArgs{current_term, my_id, get_last_log_index(),
                             get_last_log_term()});
     }
+
+    std::tuple<bool, int, int> do_forward_command(
+        const std::vector<u8> &cmd_data) {
+        assert(leader_id != my_id);
+
+        // During election
+        if (leader_id == KRaftNilNodeId) {
+            return {false, KRaftFallbackTermNumber, KRaftDefaultLogIndex};
+        }
+        // Synchronized write
+        std::unique_lock<std::mutex> clients_lock(clients_mtx);
+        if (rpc_clients_map[leader_id] == nullptr ||
+            rpc_clients_map[leader_id]->get_connection_state() !=
+                rpc::client::connection_state::connected) {
+            return {false, KRaftFallbackTermNumber, KRaftDefaultLogIndex};
+        }
+
+        RAFT_LOG("[command] forward command to leader %d", leader_id);
+        auto res = rpc_clients_map[leader_id]->call(RAFT_RPC_NEW_COMMEND,
+                                                    cmd_data, cmd_data.size());
+        clients_lock.unlock();
+        if (res.is_ok()) {
+            return res.unwrap()->as<std::tuple<bool, int, int>>();
+        } else {
+            return {false, KRaftFallbackTermNumber, KRaftDefaultLogIndex};
+        }
+    }
+
+    /**
+     * @brief Leader tries to apply the new command (log) to the state machine.
+     *
+     * The leader need to append the new command to its own log, and then
+     * propagate the log entry to the followers. Until majority of the servers
+     * (including itself) have stored the new log entry, the log entry is
+     * committed.
+     *
+     */
+    std::tuple<bool, int, int> do_apply_to_state_machine(
+        const std::vector<u8> &cmd_data, std::unique_lock<std::mutex> &lock) {
+        assert(role == RaftRole::Leader);
+        Command command{};
+        command.deserialize(cmd_data, cmd_data.size());
+        log.push_back({current_term, std::move(command)});
+        auto new_log_index = get_last_log_index();
+
+        state_cv.wait(lock, [this, new_log_index]() {
+            return last_applied >= new_log_index || role != RaftRole::Leader;
+        });
+        if (last_applied < new_log_index) {
+            return {false, KRaftFallbackTermNumber, KRaftDefaultLogIndex};
+        }
+        RAFT_LOG("[command] apply log {%d, %d} to state machine", current_term,
+                 new_log_index);
+        return {true, current_term, new_log_index};
+    }
 };
 
 template <typename StateMachine, typename Command>
 RaftNode<StateMachine, Command>::RaftNode(int node_id,
                                           std::vector<RaftNodeConfig> configs)
-    : network_stat(true), node_configs(configs), my_id(node_id),
+    : network_stat(true), state(std::make_unique<StateMachine>()),
+      node_configs(configs), my_id(node_id),
       majority_cnt(static_cast<RaftNodeId>(configs.size()) / 2 + 1) {
+    std::lock_guard<std::mutex> lock{this->mtx};
     auto my_config = node_configs[my_id];
 
     /* launch RPC server */
@@ -455,6 +522,7 @@ auto RaftNode<StateMachine, Command>::stop() -> int {
 
 template <typename StateMachine, typename Command>
 auto RaftNode<StateMachine, Command>::is_leader() -> std::tuple<bool, int> {
+    assert((leader_id == my_id) == (role == RaftRole::Leader));
     return {this->role == RaftRole::Leader, this->current_term};
 }
 
@@ -467,8 +535,21 @@ template <typename StateMachine, typename Command>
 auto RaftNode<StateMachine, Command>::new_command(std::vector<u8> cmd_data,
                                                   int cmd_size)
     -> std::tuple<bool, int, int> {
-    /* Lab3: Your code here */
-    return std::make_tuple(false, -1, -1);
+
+    if (cmd_data.size() != cmd_size) {
+        RAFT_LOG("[command] invalid command size %zu versus %d",
+                 cmd_data.size(), cmd_size);
+        return std::make_tuple(false, KRaftFallbackTermNumber,
+                               KRaftDefaultLogIndex);
+    }
+
+    std::unique_lock<std::mutex> lock{this->mtx};
+
+    if (role == RaftRole::Leader) {
+        return do_apply_to_state_machine(cmd_data, lock);
+    } else {
+        return do_forward_command(cmd_data);
+    }
 }
 
 template <typename StateMachine, typename Command>
@@ -549,6 +630,7 @@ auto RaftNode<StateMachine, Command>::request_vote(RequestVoteArgs args)
 
     RAFT_LOG("[vote] vote for %d", args.candidate_id);
     voted_for = args.candidate_id;
+    assert(leader_id == KRaftNilNodeId);
     return {current_term, true};
 }
 
@@ -645,7 +727,6 @@ auto RaftNode<StateMachine, Command>::append_entries(
     // min(leaderCommit, index of last new entry)
     if (args.leader_commit > commit_index) {
         commit_index = std::min(args.leader_commit, get_last_log_index());
-        // TODO commit
     }
 
     return AppendEntriesReply{current_term, true};
@@ -680,7 +761,6 @@ void RaftNode<StateMachine, Command>::handle_append_entries_reply(
                     majority_cnt &&
                 get_log_entry(i)->term == current_term) {
                 commit_index = i;
-                // TODO commit
                 break;
             }
         }
@@ -688,8 +768,7 @@ void RaftNode<StateMachine, Command>::handle_append_entries_reply(
     } else {
         auto tmp = next_index->at(node_id);
         next_index->at(node_id) = std::max(1u, tmp - 1);
-        // Retry sending
-        do_send_append_entries_rpc(node_id);
+        // Retry sending: let #run_background_commit do the work.
     }
 }
 
@@ -816,7 +895,6 @@ void RaftNode<StateMachine, Command>::run_background_commit() {
 
     // Only work for the leader.
 
-    /* Uncomment following code when you finish */
     while (true) {
         if (is_stopped()) {
             return;
@@ -826,7 +904,7 @@ void RaftNode<StateMachine, Command>::run_background_commit() {
             if (role == RaftRole::Leader) {
                 // If last log index >= nextIndex for a follower: send
                 // AppendEntries RPC with log entries starting at nextIndex
-                auto last_log_index = get_last_log_term();
+                auto last_log_index = get_last_log_index();
                 for (RaftNodeId i = 0; i < node_configs.size(); i++) {
                     if (i == my_id) {
                         continue;
@@ -849,15 +927,27 @@ void RaftNode<StateMachine, Command>::run_background_apply() {
 
     // Work for all the nodes.
 
-    /* Uncomment following code when you finish */
-    // while (true) {
-    //     {
-    //         if (is_stopped()) {
-    //             return;
-    //         }
-    //         /* Lab3: Your code here */
-    //     }
-    // }
+    while (true) {
+        if (is_stopped()) {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock{this->mtx};
+
+            if (commit_index > last_applied) {
+                for (RaftLogIndex i = last_applied + 1; i <= commit_index;
+                     ++i) {
+                    auto entry = get_log_entry(i);
+                    assert(entry.has_value());
+                    state->apply_log(entry->command);
+                }
+                last_applied = commit_index;
+            }
+        }
+        state_cv.notify_all();
+        std::this_thread::sleep_for(KRaftThreadSleepingSlice);
+    }
 
     return;
 }
@@ -868,18 +958,22 @@ void RaftNode<StateMachine, Command>::run_background_ping() {
 
     // Only work for the leader.
 
-    /* Uncomment following code when you finish */
     while (true) {
         if (is_stopped()) {
             return;
         }
         {
-            std::lock_guard<std::mutex> lock{this->mtx};
+            std::unique_lock<std::mutex> lock{this->mtx};
             if (this->role == RaftRole::Leader) {
                 do_broadcast_heartbeat();
+            } else {
+                // If the server is not the leader, notify state_cv
+                // in case there are pending writes.
+                lock.unlock();
+                state_cv.notify_all();
             }
         }
-        std::this_thread::sleep_for(KRaftHeartBeatInterval);
+        std::this_thread::sleep_for(KRaftHeartbeatInterval);
     }
 
     return;

@@ -123,9 +123,9 @@ AppendEntriesArgs<Command> transform_rpc_append_entries_args(
     std::vector<RaftLogEntry<Command>> entries{};
 
     if (!marshalled.empty()) {
-        entries.reserve(marshalled.size() / sizeof(RaftLogEntry<Command>));
-        for (auto i = 0; i < marshalled.size();
-             i += sizeof(RaftLogEntry<Command>)) {
+        auto entries_cnt = marshalled.size() / sizeof(RaftLogEntry<Command>);
+        entries.reserve(entries_cnt);
+        for (auto i = 0; i < entries_cnt; i += sizeof(RaftLogEntry<Command>)) {
             auto entry = RaftLogEntry<Command>{};
             entry.deserialize(std::vector<u8>{
                 begin(marshalled) + i,
