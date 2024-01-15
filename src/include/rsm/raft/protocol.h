@@ -24,7 +24,7 @@ struct RequestVoteArgs {
     RaftLogIndex last_log_index;
     RaftTermNumber last_log_term;
 
-    MSGPACK_DEFINE(term, candidate_id, last_log_term, last_log_term);
+    MSGPACK_DEFINE(term, candidate_id, last_log_index, last_log_term);
 };
 
 struct RequestVoteReply {

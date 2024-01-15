@@ -26,7 +26,8 @@ private:
 };
 
 template <typename Command>
-RaftLog<Command>::RaftLog(std::shared_ptr<BlockManager> bm) {
+RaftLog<Command>::RaftLog(std::shared_ptr<BlockManager> bm)
+    : bm_(std::move(bm)) {
     /* Lab3: Your code here */
 }
 

@@ -281,7 +281,7 @@ private:
     }
 
     void do_start_new_election() {
-        RAFT_LOG("[election] start new election");
+        // RAFT_LOG("[election] start new election");
         role = RaftRole::Candidate;
         current_term += 1;
         // Vote for self
@@ -401,14 +401,20 @@ private:
         match_index->at(my_id) = get_last_log_index();
         auto new_log_index = get_last_log_index();
 
-        state_cv.wait(lock, [this, new_log_index]() {
+        state_cv.wait_for(lock, KRaftRequestTimeout, [this, new_log_index]() {
             // RAFT_LOG("[chore] last_applied %d, new_log_index %d",
             // last_applied,
             //          new_log_index);
             return last_applied >= new_log_index || role != RaftRole::Leader;
         });
-        if (last_applied < new_log_index) {
+        if (role != RaftRole::Leader) {
             return {false, KRaftFallbackTermNumber, KRaftDefaultLogIndex};
+        }
+
+        if (last_applied < new_log_index) {
+            RAFT_LOG("[command] apply command timeout");
+            // return {false, KRaftFallbackTermNumber, KRaftDefaultLogIndex};
+            return {true, current_term, new_log_index};
         }
         return {true, current_term, new_log_index};
     }
@@ -626,15 +632,17 @@ auto RaftNode<StateMachine, Command>::request_vote(RequestVoteArgs args)
     auto my_last_log_index = this->get_last_log_index();
 
     if (my_last_log_term > args.last_log_term) {
-        RAFT_LOG("[vote] reject %d because we have larger lastLogTerm",
-                 args.candidate_id);
+        RAFT_LOG(
+            "[vote] reject %d because we have larger lastLogTerm: %d vs %d",
+            args.candidate_id, my_last_log_term, args.last_log_term);
         return {current_term, false};
     }
 
     if (my_last_log_term == args.last_log_term &&
         my_last_log_index > args.last_log_index) {
-        RAFT_LOG("[vote] reject %d because we have larger lastLogIndex",
-                 args.candidate_id);
+        RAFT_LOG(
+            "[vote] reject %d because we have larger lastLogIndex: %d vs %d",
+            args.candidate_id, my_last_log_index, args.last_log_index);
         return {current_term, false};
     }
 
@@ -679,21 +687,25 @@ auto RaftNode<StateMachine, Command>::append_entries(
 
     AppendEntriesArgs<Command> args =
         transform_rpc_append_entries_args<Command>(rpc_arg);
+    bool is_heartbeat = args.entries.empty();
 
     std::lock_guard<std::mutex> lock{this->mtx};
-    if (!args.entries.empty()) {
-        RAFT_LOG("[AppendEntries] receive from %d, prev_log_index %d, "
-                 "prev_log_term %d, entry (%d, %d), commit_index %d",
-                 args.leader_id, args.prev_log_index, args.prev_log_term,
-                 args.entries.empty() ? -1 : args.entries[0].term,
-                 args.entries.empty() ? -1 : args.entries[0].command.value,
-                 args.leader_commit);
-    } else {
-        RAFT_LOG("[heartbeat] receive heartbeat from %d", args.leader_id);
-    }
+    // if (!is_heartbeat) {
+    //     RAFT_LOG("[AppendEntries] receive from %d, prev_log_index %d, "
+    //              "prev_log_term %d, entry (%d, %d), commit_index %d",
+    //              args.leader_id, args.prev_log_index, args.prev_log_term,
+    //              args.entries[0].term, args.entries[0].command.value,
+    //              args.leader_commit);
+    // } else {
+    //     RAFT_LOG("[heartbeat] receive heartbeat from %d", args.leader_id);
+    // }
 
     // Common operations
     reset_election_timer();
+    // The leader has less term number, reject it!
+    if (args.term < current_term) {
+        return AppendEntriesReply{current_term, false};
+    }
     leader_id = args.leader_id;
     if (args.term > current_term) {
         expire_term(args.term);
@@ -706,9 +718,16 @@ auto RaftNode<StateMachine, Command>::append_entries(
         role = RaftRole::Follower;
     }
 
-    // The leader has less term number, reject it!
-    if (args.term < current_term) {
-        return AppendEntriesReply{current_term, false};
+    // If leaderCommit > commitIndex, set commitIndex =
+    // min(leaderCommit, index of last new entry)
+    if (args.leader_commit > commit_index) {
+        RAFT_LOG("[log] update commit index from %d to %d", commit_index,
+                 args.leader_commit);
+        commit_index = std::min(args.leader_commit, get_last_log_index());
+    }
+
+    if (is_heartbeat) {
+        return AppendEntriesReply{current_term, true};
     }
 
     do {
@@ -733,34 +752,21 @@ auto RaftNode<StateMachine, Command>::append_entries(
         }
     } while (false);
 
-    {
-        // If an existing entry conflicts with a new one (same index but
-        // different terms), delete the existing entry and all that follow it.
-        auto index_new_entry = args.prev_log_index + 1;
-        auto maybe_entry = this->get_log_entry(index_new_entry);
-        if (maybe_entry.has_value() && maybe_entry->term != args.term) {
-            RAFT_LOG("[AppendEntries] truncate log from index %d",
-                     index_new_entry);
-            log.resize(args.prev_log_index);
-        }
+    // If an existing entry conflicts with a new one (same index but
+    // different terms), delete the existing entry and all that follow it.
+    auto index_new_entry = args.prev_log_index + 1;
+    auto maybe_entry = this->get_log_entry(index_new_entry);
+    if (maybe_entry.has_value() && maybe_entry->term != args.term) {
+        RAFT_LOG("[AppendEntries] truncate log from index %d", index_new_entry);
+        log.resize(args.prev_log_index);
     }
 
     // Append new entries not already in the log.
-    if (!args.entries.empty()) {
-        assert(args.entries.size() == 1);
-        assert(log.size() == args.prev_log_index);
-        RAFT_LOG("[AppendEntries] append new entry at index %d",
-                 args.prev_log_index + 1);
-        this->log.push_back(args.entries[0]);
-    }
-
-    // If leaderCommit > commitIndex, set commitIndex =
-    // min(leaderCommit, index of last new entry)
-    if (args.leader_commit > commit_index) {
-        RAFT_LOG("[log] update commit index from %d to %d", commit_index,
-                 args.leader_commit);
-        commit_index = std::min(args.leader_commit, get_last_log_index());
-    }
+    assert(args.entries.size() == 1);
+    assert(log.size() == args.prev_log_index);
+    RAFT_LOG("[AppendEntries] append new entry at index %d",
+             args.prev_log_index + 1);
+    this->log.push_back(args.entries[0]);
 
     return AppendEntriesReply{current_term, true};
 }
@@ -788,29 +794,28 @@ void RaftNode<StateMachine, Command>::handle_append_entries_reply(
                 arg.prev_log_index + arg.entries.size() + 1;
             match_index->at(node_id) = arg.prev_log_index + arg.entries.size();
 
-            RAFT_LOG("[log] update next index of node %d to %d", node_id,
-                     next_index->at(node_id));
-        }
-
-        // If there exists an N such that N > commitIndex, a majority of
-        // matchIndex[i] >= N, and log[N].term == currentTerm:
-        // set commitIndex = N
-        for (RaftLogIndex i = get_last_log_index(); i > commit_index; i--) {
-            if (std::count_if(match_index->begin(), match_index->end(),
-                              [i](RaftLogIndex idx) { return idx >= i; }) >=
-                    majority_cnt &&
-                get_log_entry(i)->term == current_term) {
-                RAFT_LOG("[log] update commit index from %d to %d",
-                         commit_index, i);
-                commit_index = i;
-                break;
+            // RAFT_LOG("[log] update next index of node %d to %d", node_id,
+            //          next_index->at(node_id));
+            // If there exists an N such that N > commitIndex, a majority of
+            // matchIndex[i] >= N, and log[N].term == currentTerm:
+            // set commitIndex = N
+            for (RaftLogIndex i = get_last_log_index(); i > commit_index; i--) {
+                if (std::count_if(match_index->begin(), match_index->end(),
+                                  [i](RaftLogIndex idx) { return idx >= i; }) >=
+                        majority_cnt &&
+                    get_log_entry(i)->term == current_term) {
+                    RAFT_LOG("[log] update commit index from %d to %d",
+                             commit_index, i);
+                    commit_index = i;
+                    break;
+                }
             }
         }
 
     } else {
         next_index->at(node_id) = next_index->at(node_id) - 1;
-        RAFT_LOG("[log] update next index of node %d to %d", node_id,
-                 next_index->at(node_id));
+        // RAFT_LOG("[log] update next index of node %d to %d", node_id,
+        //          next_index->at(node_id));
         // Retry sending: let #run_background_commit do the work.
     }
 }
@@ -953,7 +958,6 @@ void RaftNode<StateMachine, Command>::run_background_commit() {
                         continue;
                     }
                     if (last_log_index >= next_index->at(i)) {
-                        RAFT_LOG("[log] send log to node %d", i);
                         do_send_append_entries_rpc(i);
                     }
                 }
@@ -1017,9 +1021,6 @@ void RaftNode<StateMachine, Command>::run_background_ping() {
             std::unique_lock<std::mutex> lock{this->mtx};
             if (this->role == RaftRole::Leader) {
                 do_broadcast_heartbeat();
-            } else {
-                lock.unlock();
-                state_cv.notify_all();
             }
         }
         std::this_thread::sleep_for(KRaftHeartbeatInterval);
