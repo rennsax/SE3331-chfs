@@ -333,19 +333,20 @@ private:
 
         auto prev_log_index = next_index->at(follower_id) - 1;
         auto prev_log_term = get_log_entry(prev_log_index)->term;
-        auto maybe_entry = get_log_entry(next_index->at(follower_id));
         // If this function is called, we have
         // get_last_log_index() > prev_log_index.
-        assert(maybe_entry.has_value());
+        // Send multiple entries at once for efficiency.
+        std::vector<RaftLogEntry<Command>> entries{};
+        for (RaftLogIndex i = next_index->at(follower_id);
+             i <= get_last_log_index(); i++) {
+            entries.push_back(get_log_entry(i).value());
+        }
+
         thread_pool->enqueue(
             &RaftNode<StateMachine, Command>::send_append_entries, this,
             follower_id,
-            AppendEntriesArgs<Command>{current_term,
-                                       my_id,
-                                       prev_log_index,
-                                       prev_log_term,
-                                       {maybe_entry.value()},
-                                       commit_index});
+            AppendEntriesArgs<Command>{current_term, my_id, prev_log_index,
+                                       prev_log_term, entries, commit_index});
     }
 
     void do_send_request_vote_rpc(RaftNodeId follower_id) {
@@ -756,18 +757,17 @@ auto RaftNode<StateMachine, Command>::append_entries(
         // different terms), delete the existing entry and all that follow it.
         auto index_new_entry = args.prev_log_index + 1;
         auto maybe_entry = this->get_log_entry(index_new_entry);
-        if (maybe_entry.has_value() && maybe_entry->term != args.term) {
+        auto expected_term = args.entries[0].term;
+        if (maybe_entry.has_value() && maybe_entry->term != expected_term) {
             RAFT_LOG("[AppendEntries] truncate log from index %d",
                      index_new_entry);
             log.resize(args.prev_log_index);
         }
 
         // Append new entries not already in the log.
-        assert(args.entries.size() == 1);
-        assert(log.size() == args.prev_log_index);
         RAFT_LOG("[AppendEntries] append new entry at index %d",
                  args.prev_log_index + 1);
-        this->log.push_back(args.entries[0]);
+        log.insert(end(log), begin(args.entries), end(args.entries));
     }
 
     // If leaderCommit > commitIndex, set commitIndex =
