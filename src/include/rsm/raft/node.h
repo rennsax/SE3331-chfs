@@ -432,7 +432,9 @@ private:
 
     void persist() {
         assert(log_storage);
-        log_storage->persist(current_term, voted_for, log);
+        log_storage->persist(current_term, voted_for,
+                             std::vector<RaftLogEntry<Command>>(
+                                 begin(log), begin(log) + commit_index));
     }
 };
 
