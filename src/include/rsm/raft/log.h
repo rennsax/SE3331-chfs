@@ -74,6 +74,7 @@ public:
     }
 
     void read_persisted(RaftTermNumber &current_term, RaftNodeId &voted_for,
+                        RaftLogIndex &commit_index,
                         std::vector<RaftLogEntry<Command>> &entries) {
         std::lock_guard<std::mutex> lock{mtx};
         auto metadata = read_metadata_();
@@ -82,6 +83,7 @@ public:
         }
         current_term = metadata.current_term;
         voted_for = metadata.voted_for;
+        commit_index = metadata.log_cnt;
 
         entries.clear();
         entries.reserve(metadata.log_cnt);

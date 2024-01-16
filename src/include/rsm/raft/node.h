@@ -403,10 +403,9 @@ private:
         assert(role == RaftRole::Leader);
         Command command{};
         command.deserialize(cmd_data, cmd_data.size());
-        RAFT_LOG("[command] leader appends command %d at %d", command.value,
-                 get_last_log_index() + 1);
+        RAFT_LOG("[log] leader append (%d, %d) at index %d", current_term,
+                 command.value, get_last_log_index() + 1);
         log.push_back({current_term, std::move(command)});
-        persist();
         match_index->at(my_id) = get_last_log_index();
         auto new_log_index = get_last_log_index();
 
@@ -423,7 +422,7 @@ private:
         }
 
         if (last_applied < new_log_index) {
-            RAFT_LOG("[command] apply command timeout");
+            // RAFT_LOG("[command] apply command timeout");
             // return {false, KRaftFallbackTermNumber, KRaftDefaultLogIndex};
             return {true, current_term, new_log_index};
         }
@@ -471,6 +470,10 @@ private:
                        std::min(new_entries.size(),
                                 static_cast<std::size_t>(skip_append)),
                    end(new_entries));
+        if (new_entries.size() - skip_append != 0) {
+            RAFT_LOG("[AppendEntries] append %zu entries",
+                     new_entries.size() - skip_append);
+        }
         // for (RaftLogIndex i = 1; i <= get_last_log_index(); ++i) {
         //     auto log_entry = get_log_entry(i);
         //     ss_new_log << "(" << log_entry->term << ", "
@@ -526,7 +529,7 @@ RaftNode<StateMachine, Command>::RaftNode(int node_id,
     log_storage =
         std::make_unique<RaftLog<Command>>(std::make_shared<BlockManager>(
             "/tmp/raft_log/node-" + std::to_string(my_id) + ".log"));
-    log_storage->read_persisted(current_term, voted_for, log);
+    log_storage->read_persisted(current_term, voted_for, commit_index, log);
 
     rpc_server->run(true, configs.size());
 }
@@ -813,6 +816,7 @@ auto RaftNode<StateMachine, Command>::append_entries(
         commit_index = std::min(args.leader_commit, get_last_log_index());
         RAFT_LOG("[AppendEntries] commitIndex: %d -> %d", previous_commit_index,
                  commit_index);
+        persist();
     }
 
     return AppendEntriesReply{current_term, true};
@@ -853,6 +857,7 @@ void RaftNode<StateMachine, Command>::handle_append_entries_reply(
                     get_log_entry(i)->term == current_term) {
                     RAFT_LOG("[log] commitIndex: %d -> %d", commit_index, i);
                     commit_index = i;
+                    persist();
                     break;
                 }
             }
@@ -1040,9 +1045,9 @@ void RaftNode<StateMachine, Command>::run_background_apply() {
                     auto entry = get_log_entry(i);
                     assert(entry.has_value());
                     state->apply_log(entry->command);
+                    RAFT_LOG("[sm] apply log (%d, %d)", entry->term,
+                             entry->command.value);
                 }
-                RAFT_LOG("[sm] apply logs from %d to %d", last_applied + 1,
-                         commit_index);
                 last_applied = commit_index;
             }
         }
