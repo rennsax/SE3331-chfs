@@ -301,14 +301,18 @@ private:
         // Only leader can broadcast.
         assert(this->role == RaftRole::Leader);
         // RAFT_LOG("[heartbeat] broadcast heartbeat");
-        auto heartbeat_rpc_args = AppendEntriesArgs<Command>{
-            current_term, my_id, 0, KRaftFallbackTermNumber, {}, commit_index};
 
         for (RaftNodeId client_id = 0; client_id < node_configs.size();
              client_id++) {
             if (client_id == my_id) {
                 continue;
             }
+            auto prev_log_index = next_index->at(client_id) - 1;
+            auto prev_log_term = get_log_entry(prev_log_index)->term;
+            // Attention: the args of heartbeat RPC should be thought twice!
+            auto heartbeat_rpc_args =
+                AppendEntriesArgs<Command>{current_term,  my_id, prev_log_index,
+                                           prev_log_term, {},    commit_index};
             // RAFT_LOG("[heartbeat] send heartbeat to node %d", client_id);
             thread_pool->enqueue(
                 &RaftNode<StateMachine, Command>::send_append_entries, this,
@@ -394,9 +398,10 @@ private:
     std::tuple<bool, int, int> do_apply_to_state_machine(
         const std::vector<u8> &cmd_data, std::unique_lock<std::mutex> &lock) {
         assert(role == RaftRole::Leader);
-        RAFT_LOG("[command] leader try to apply command to state machine");
         Command command{};
         command.deserialize(cmd_data, cmd_data.size());
+        RAFT_LOG("[command] leader appends command %d at %d", command.value,
+                 get_last_log_index() + 1);
         log.push_back({current_term, std::move(command)});
         match_index->at(my_id) = get_last_log_index();
         auto new_log_index = get_last_log_index();
@@ -407,7 +412,9 @@ private:
             //          new_log_index);
             return last_applied >= new_log_index || role != RaftRole::Leader;
         });
-        if (role != RaftRole::Leader) {
+        if (last_applied < new_log_index && role != RaftRole::Leader) {
+            // While requesting, the leader has fallen.
+            // Since new term begins, this request must be invalid now.
             return {false, KRaftFallbackTermNumber, KRaftDefaultLogIndex};
         }
 
@@ -718,17 +725,9 @@ auto RaftNode<StateMachine, Command>::append_entries(
         role = RaftRole::Follower;
     }
 
-    // If leaderCommit > commitIndex, set commitIndex =
-    // min(leaderCommit, index of last new entry)
-    if (args.leader_commit > commit_index) {
-        RAFT_LOG("[log] update commit index from %d to %d", commit_index,
-                 args.leader_commit);
-        commit_index = std::min(args.leader_commit, get_last_log_index());
-    }
-
-    if (is_heartbeat) {
-        return AppendEntriesReply{current_term, true};
-    }
+    // if (is_heartbeat) {
+    //     return AppendEntriesReply{current_term, true};
+    // }
 
     do {
         if (args.prev_log_index == 0) {
@@ -752,21 +751,32 @@ auto RaftNode<StateMachine, Command>::append_entries(
         }
     } while (false);
 
-    // If an existing entry conflicts with a new one (same index but
-    // different terms), delete the existing entry and all that follow it.
-    auto index_new_entry = args.prev_log_index + 1;
-    auto maybe_entry = this->get_log_entry(index_new_entry);
-    if (maybe_entry.has_value() && maybe_entry->term != args.term) {
-        RAFT_LOG("[AppendEntries] truncate log from index %d", index_new_entry);
-        log.resize(args.prev_log_index);
+    if (!is_heartbeat) {
+        // If an existing entry conflicts with a new one (same index but
+        // different terms), delete the existing entry and all that follow it.
+        auto index_new_entry = args.prev_log_index + 1;
+        auto maybe_entry = this->get_log_entry(index_new_entry);
+        if (maybe_entry.has_value() && maybe_entry->term != args.term) {
+            RAFT_LOG("[AppendEntries] truncate log from index %d",
+                     index_new_entry);
+            log.resize(args.prev_log_index);
+        }
+
+        // Append new entries not already in the log.
+        assert(args.entries.size() == 1);
+        assert(log.size() == args.prev_log_index);
+        RAFT_LOG("[AppendEntries] append new entry at index %d",
+                 args.prev_log_index + 1);
+        this->log.push_back(args.entries[0]);
     }
 
-    // Append new entries not already in the log.
-    assert(args.entries.size() == 1);
-    assert(log.size() == args.prev_log_index);
-    RAFT_LOG("[AppendEntries] append new entry at index %d",
-             args.prev_log_index + 1);
-    this->log.push_back(args.entries[0]);
+    // If leaderCommit > commitIndex, set commitIndex =
+    // min(leaderCommit, index of last new entry)
+    if (args.leader_commit > commit_index) {
+        // RAFT_LOG("[log] update commit index from %d to %d", commit_index,
+        //          args.leader_commit);
+        commit_index = std::min(args.leader_commit, get_last_log_index());
+    }
 
     return AppendEntriesReply{current_term, true};
 }

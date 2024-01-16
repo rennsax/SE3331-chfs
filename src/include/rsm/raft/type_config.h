@@ -16,7 +16,7 @@ constexpr RaftLogIndex KRaftFallbackTermNumber = 0;
 
 constexpr std::chrono::milliseconds KRaftThreadSleepingSlice{30};
 constexpr std::chrono::milliseconds KRaftHeartbeatInterval{50};
-constexpr std::chrono::microseconds KRaftRequestTimeout{200};
+constexpr std::chrono::milliseconds KRaftRequestTimeout{0};
 
 struct [[deprecated]] RaftRAII {
 
