@@ -212,6 +212,7 @@ private:
         current_term = newTerm;
         voted_for = KRaftNilNodeId;
         leader_id = KRaftNilNodeId;
+        persist();
     }
 
     /**
@@ -287,6 +288,7 @@ private:
         // Vote for self
         vote_granted_cnt = 1;
         voted_for = my_id;
+        persist();
 
         reset_election_timer();
         for (RaftNodeId i = 0; i < node_configs.size(); i++) {
@@ -404,6 +406,7 @@ private:
         RAFT_LOG("[command] leader appends command %d at %d", command.value,
                  get_last_log_index() + 1);
         log.push_back({current_term, std::move(command)});
+        persist();
         match_index->at(my_id) = get_last_log_index();
         auto new_log_index = get_last_log_index();
 
@@ -425,6 +428,11 @@ private:
             return {true, current_term, new_log_index};
         }
         return {true, current_term, new_log_index};
+    }
+
+    void persist() {
+        assert(log_storage);
+        log_storage->persist(current_term, voted_for, log);
     }
 };
 
@@ -469,6 +477,11 @@ RaftNode<StateMachine, Command>::RaftNode(int node_id,
                      });
 
     thread_pool = std::make_unique<ThreadPool>(4);
+
+    log_storage =
+        std::make_unique<RaftLog<Command>>(std::make_shared<BlockManager>(
+            "/tmp/raft_log/node-" + std::to_string(my_id) + ".log"));
+    log_storage->read_persisted(current_term, voted_for, log);
 
     rpc_server->run(true, configs.size());
 }
@@ -656,6 +669,7 @@ auto RaftNode<StateMachine, Command>::request_vote(RequestVoteArgs args)
 
     RAFT_LOG("[vote] vote for %d", args.candidate_id);
     voted_for = args.candidate_id;
+    persist();
     return {current_term, true};
 }
 
@@ -768,6 +782,7 @@ auto RaftNode<StateMachine, Command>::append_entries(
         RAFT_LOG("[AppendEntries] append new entry at index %d",
                  args.prev_log_index + 1);
         log.insert(end(log), begin(args.entries), end(args.entries));
+        persist();
     }
 
     // If leaderCommit > commitIndex, set commitIndex =

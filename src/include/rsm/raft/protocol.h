@@ -34,42 +34,6 @@ struct RequestVoteReply {
     MSGPACK_DEFINE(term, vote_granted);
 };
 
-template <typename _Command> struct RaftLogEntry {
-    using StateMachineCommand = _Command;
-    RaftTermNumber term;
-    StateMachineCommand command;
-
-    std::size_t size() const noexcept {
-        return command.size() + sizeof(RaftTermNumber);
-    }
-
-    std::vector<u8> serialize() const noexcept {
-        std::vector<u8> buf{};
-        buf.reserve(size());
-        buf.push_back((term >> 24) & 0xff);
-        buf.push_back((term >> 16) & 0xff);
-        buf.push_back((term >> 8) & 0xff);
-        buf.push_back(term & 0xff);
-        auto command_buf = command.serialize(command.size());
-        buf.insert(end(buf), begin(command_buf), end(command_buf));
-
-        return buf;
-    }
-
-    void deserialize(const std::vector<u8> &data) {
-        assert(data.size() == size());
-        term = (data[0] & 0xff) << 24;
-        term |= (data[1] & 0xff) << 16;
-        term |= (data[2] & 0xff) << 8;
-        term |= data[3] & 0xff;
-        auto command_buf =
-            std::vector<u8>(begin(data) + sizeof(RaftTermNumber), end(data));
-        command.deserialize(command_buf, command_buf.size());
-    }
-
-    MSGPACK_DEFINE(term, command);
-};
-
 template <typename Command> struct AppendEntriesArgs {
     RaftTermNumber term;
     RaftNodeId leader_id;
