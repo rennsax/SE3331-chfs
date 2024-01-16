@@ -120,19 +120,24 @@ struct AppendEntriesReply {
 };
 
 struct InstallSnapshotArgs {
-    /* Lab3: Your code here */
+    RaftTermNumber term;
+    RaftNodeId leader_id;
+    RaftLogIndex last_included_index;
+    RaftTermNumber last_included_term;
 
-    MSGPACK_DEFINE(
+    std::size_t offset;
+    std::vector<u8> data;
 
-    )
+    bool done;
+
+    MSGPACK_DEFINE(term, leader_id, last_included_index, last_included_term,
+                   offset, data, done);
 };
 
 struct InstallSnapshotReply {
-    /* Lab3: Your code here */
+    RaftTermNumber term;
 
-    MSGPACK_DEFINE(
-
-    )
+    MSGPACK_DEFINE(term);
 };
 
 } /* namespace chfs */
