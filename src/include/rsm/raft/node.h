@@ -453,26 +453,31 @@ private:
         // }
 
         // Append new entries not already in the log.
-        std::stringstream ss_prev_log{}, ss_new_log{};
+        // std::stringstream ss_prev_log{}, ss_new_log{};
 
-        auto previous_log_size = get_last_log_index();
-        for (RaftLogIndex i = 1; i <= previous_log_size; ++i) {
-            auto log_entry = get_log_entry(i);
-            ss_prev_log << "(" << log_entry->term << ", "
-                        << log_entry->command.value << ") ";
-        }
+        // auto previous_log_size = get_last_log_index();
+        // for (RaftLogIndex i = 1; i <= previous_log_size; ++i) {
+        //     auto log_entry = get_log_entry(i);
+        //     ss_prev_log << "(" << log_entry->term << ", "
+        //                 << log_entry->command.value << ") ";
+        // }
         // Attention: cannot truncate log entries that are already committed!!
         log.resize(std::max(prev_log_index, commit_index));
-        RAFT_LOG("[AppendEntries] after resizing: %d", get_last_log_index());
+        // RAFT_LOG("[AppendEntries] after resizing: %d", get_last_log_index());
 
-        log.insert(end(log), begin(new_entries), end(new_entries));
-        for (RaftLogIndex i = 1; i <= get_last_log_index(); ++i) {
-            auto log_entry = get_log_entry(i);
-            ss_new_log << "(" << log_entry->term << ", "
-                       << log_entry->command.value << ") ";
-        }
-        RAFT_LOG("[AppendEntries] log changed: %s -> %s",
-                 ss_prev_log.str().c_str(), ss_new_log.str().c_str());
+        auto skip_append = get_last_log_index() - prev_log_index;
+        log.insert(end(log),
+                   begin(new_entries) +
+                       std::min(new_entries.size(),
+                                static_cast<std::size_t>(skip_append)),
+                   end(new_entries));
+        // for (RaftLogIndex i = 1; i <= get_last_log_index(); ++i) {
+        //     auto log_entry = get_log_entry(i);
+        //     ss_new_log << "(" << log_entry->term << ", "
+        //                << log_entry->command.value << ") ";
+        // }
+        // RAFT_LOG("[AppendEntries] log changed: %s -> %s",
+        //          ss_prev_log.str().c_str(), ss_new_log.str().c_str());
     }
 };
 
@@ -751,12 +756,12 @@ auto RaftNode<StateMachine, Command>::append_entries(
         transform_rpc_append_entries_args<Command>(rpc_arg);
 
     std::lock_guard<std::mutex> lock{this->mtx};
-    RAFT_LOG("[AppendEntries] receive from %d, prev_log_index %d, "
-             "prev_log_term %d, entry (%d, %d), commit_index %d",
-             args.leader_id, args.prev_log_index, args.prev_log_term,
-             args.entries.empty() ? -1 : args.entries[0].term,
-             args.entries.empty() ? -1 : args.entries[0].command.value,
-             args.leader_commit);
+    // RAFT_LOG("[AppendEntries] receive from %d, prev_log_index %d, "
+    //          "prev_log_term %d, entry (%d, %d), commit_index %d",
+    //          args.leader_id, args.prev_log_index, args.prev_log_term,
+    //          args.entries.empty() ? -1 : args.entries[0].term,
+    //          args.entries.empty() ? -1 : args.entries[0].command.value,
+    //          args.leader_commit);
     // Common operations
     // The leader has less term number, reject it!
     if (args.term < current_term) {
